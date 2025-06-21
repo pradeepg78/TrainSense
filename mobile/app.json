@@ -1,6 +1,8 @@
 {
   "expo": {
     "name": "train-sense",
+    "entryPoint": "./App.tsx",
+    "plugins" : [],
     "slug": "train-sense",
     "version": "1.0.0",
     "orientation": "portrait",
