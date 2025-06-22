@@ -78,6 +78,7 @@ ENV/
 .env.test.local
 .env.production.local
 backend/.env
+mobile/.env
 
 # Flask
 instance/
