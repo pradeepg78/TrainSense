@@ -1,5 +1,5 @@
-import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons"; //icons
+import { LinearGradient } from "expo-linear-gradient"; //colorful bg
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -11,32 +11,34 @@ import {
   View,
 } from "react-native";
 
-// Components
+// components
 import RouteCard from "../components/RouteCard";
 
 const HomeScreen = () => {
-  const [refreshing, setRefreshing] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [nearbyStops, setNearbyStops] = useState([]);
-  const [favoriteRoutes, setFavoriteRoutes] = useState([]);
+  const [refreshing, setRefreshing] = useState(false); //var refreshing used to show pull to refresh spinner, setRefreshing to change
+  const [currentTime, setCurrentTime] = useState(new Date()); //currentTime updates every min to show live time
+  const [nearbyStops, setNearbyStops] = useState([]); //nearbyStops for nearby stops, needs to be implemented
+  const [favoriteRoutes, setFavoriteRoutes] = useState([]); //fav routes
 
   // Update time every minute
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(new Date());
+      setCurrentTime(new Date()); //updates every min
     }, 60000);
 
     return () => clearInterval(timer);
   }, []);
 
+  //called when the user pulls to refresh the screen
   const onRefresh = async () => {
     setRefreshing(true);
-    // TODO: Fetch fresh data from your backend
+    // BACKEND TODO: fetch fresh data from your backend
     setTimeout(() => {
       setRefreshing(false);
-    }, 2000);
+    }, 2000); //2 seconds, fake
   };
 
+  //placeholder function
   const handleQuickPlan = () => {
     Alert.alert("Quick Plan", "Trip planning feature coming soon!");
   };
