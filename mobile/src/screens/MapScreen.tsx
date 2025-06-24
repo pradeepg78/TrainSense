@@ -77,6 +77,7 @@ const MapScreen = () => {
 
   return (
     <View style={styles.container}>
+      {/* MapView - main map area */}
       <MapView
         style={styles.map}
         region={region}
@@ -85,6 +86,7 @@ const MapScreen = () => {
         showsMyLocationButton={false}
         // showsTraffic={true}
       >
+        {/* Render all transit markers with custom icons */}
         {markers.map((marker) => (
           <Marker
             key={marker.id}
@@ -102,10 +104,11 @@ const MapScreen = () => {
         ))}
       </MapView>
 
-      {/* Floating Action Buttons */}
+      {/* Floating Action Buttons - modern, with shadow and color */}
       <TouchableOpacity
         style={[styles.fab, styles.locationFab]}
         onPress={handleLocationPress}
+        activeOpacity={0.85}
       >
         <Ionicons name="locate" size={24} color="#FFFFFF" />
       </TouchableOpacity>
@@ -113,11 +116,12 @@ const MapScreen = () => {
       <TouchableOpacity
         style={[styles.fab, styles.refreshFab]}
         onPress={handleRefresh}
+        activeOpacity={0.85}
       >
         <Ionicons name="refresh" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Legend */}
+      {/* Legend - modern card with shadow and color */}
       <View style={styles.legend}>
         <Text style={styles.legendTitle}>Live Transit</Text>
         <View style={styles.legendItem}>
@@ -147,32 +151,35 @@ const styles = StyleSheet.create({
   markerContainer: {
     alignItems: "center",
     justifyContent: "center",
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#0066CC",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#2193b0",
     borderWidth: 2,
     borderColor: "#FFFFFF",
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
   },
   markerIcon: {
-    fontSize: 20,
+    fontSize: 22,
+    color: "#fff",
   },
   fab: {
     position: "absolute",
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#0066CC",
+    backgroundColor: "#2193b0",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 8,
   },
   locationFab: {
     bottom: 120,
@@ -184,38 +191,36 @@ const styles = StyleSheet.create({
   },
   legend: {
     position: "absolute",
-    top: 20,
+    top: 24,
     left: 20,
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    backgroundColor: "#fff",
+    padding: 18,
+    borderRadius: 16,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   legendTitle: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#333",
-    marginBottom: 8,
+    color: "#2193b0",
+    marginBottom: 10,
+    letterSpacing: 0.2,
   },
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   legendIcon: {
-    fontSize: 16,
+    fontSize: 18,
     marginRight: 8,
   },
   legendText: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 15,
+    color: "#333",
   },
 });
 

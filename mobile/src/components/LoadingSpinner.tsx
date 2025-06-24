@@ -7,14 +7,19 @@ interface LoadingSpinnerProps {
   color?: "string";
 }
 
+// =====================
+// LoadingSpinner - visually enhanced and heavily commented
+// =====================
 const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   message = "Loading...",
   size = "large",
-  color = "#0066CC",
+  color = "#2193b0", // modern blue
 }) => {
   return (
     <View style={styles.container}>
+      {/* ActivityIndicator with modern color */}
       <ActivityIndicator size={size} color={color} />
+      {/* Optional loading message */}
       {message && <Text style={styles.message}>{message}</Text>}
     </View>
   );
@@ -25,13 +30,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: 24,
+    backgroundColor: "#F8F9FA",
   },
   message: {
-    marginTop: 15,
+    marginTop: 18,
     fontSize: 16,
-    color: "$#66",
+    color: "#2193b0",
     textAlign: "center",
+    fontWeight: "500",
+    letterSpacing: 0.2,
   },
 });
 

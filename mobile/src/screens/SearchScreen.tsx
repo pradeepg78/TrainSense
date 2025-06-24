@@ -64,7 +64,7 @@ const SearchScreen = () => {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Search Form */}
+      {/* Search Form - modern card with shadow and color */}
       <View style={styles.searchContainer}>
         <Text style={styles.sectionTitle}>Plan Your Trip</Text>
 
@@ -74,7 +74,7 @@ const SearchScreen = () => {
             <Ionicons
               name="location"
               size={20}
-              color="#0066CC"
+              color="#2193b0"
               style={styles.inputIcon}
             />
             <TextInput
@@ -87,8 +87,9 @@ const SearchScreen = () => {
             <TouchableOpacity
               onPress={() => handleCurrentLocation("from")}
               style={styles.locationButton}
+              activeOpacity={0.7}
             >
-              <Ionicons name="locate" size={18} color="#0066CC" />
+              <Ionicons name="locate" size={18} color="#2193b0" />
             </TouchableOpacity>
           </View>
         </View>
@@ -97,8 +98,9 @@ const SearchScreen = () => {
         <TouchableOpacity
           style={styles.swapButton}
           onPress={handleSwapLocations}
+          activeOpacity={0.7}
         >
-          <Ionicons name="swap-vertical" size={24} color="#0066CC" />
+          <Ionicons name="swap-vertical" size={24} color="#2193b0" />
         </TouchableOpacity>
 
         {/* To Input */}
@@ -107,7 +109,7 @@ const SearchScreen = () => {
             <Ionicons
               name="flag"
               size={20}
-              color="#FF6600"
+              color="#FF6B6B"
               style={styles.inputIcon}
             />
             <TextInput
@@ -120,14 +122,19 @@ const SearchScreen = () => {
             <TouchableOpacity
               onPress={() => handleCurrentLocation("to")}
               style={styles.locationButton}
+              activeOpacity={0.7}
             >
-              <Ionicons name="locate" size={18} color="#0066CC" />
+              <Ionicons name="locate" size={18} color="#2193b0" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Search Button */}
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+        {/* Search Button - modern color and shadow */}
+        <TouchableOpacity
+          style={styles.searchButton}
+          onPress={handleSearch}
+          activeOpacity={0.85}
+        >
           <Ionicons
             name="search"
             size={20}
@@ -138,62 +145,58 @@ const SearchScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Quick Options */}
+      {/* Quick Options - modern grid, more color and spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Options</Text>
         <View style={styles.quickOptionsGrid}>
-          <TouchableOpacity style={styles.quickOption}>
-            <Ionicons name="time" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
+            <Ionicons name="time" size={24} color="#2193b0" />
             <Text style={styles.quickOptionText}>Fastest Route</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickOption}>
-            <Ionicons name="walk" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
+            <Ionicons name="walk" size={24} color="#2193b0" />
             <Text style={styles.quickOptionText}>Least Walking</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickOption}>
-            <Ionicons name="cash" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
+            <Ionicons name="cash" size={24} color="#2193b0" />
             <Text style={styles.quickOptionText}>Cheapest</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickOption}>
-            <Ionicons name="accessibility" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
+            <Ionicons name="accessibility" size={24} color="#2193b0" />
             <Text style={styles.quickOptionText}>Accessible</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Recent Searches */}
+      {/* Recent Searches - card-based, with modern color and spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Recent Searches</Text>
-        {recentSearches.map(
-          (
-            search,
-            index //here, we use search
-          ) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.recentSearchCard}
-              onPress={() => handleRecentSearch(search)}
-            >
-              <View style={styles.recentSearchContent}>
-                <View style={styles.recentSearchRoute}>
-                  <Text style={styles.recentSearchFrom}>{search.from}</Text>
-                  <Ionicons
-                    name="arrow-forward"
-                    size={16}
-                    color="#666"
-                    style={styles.arrowIcon}
-                  />
-                  <Text style={styles.recentSearchTo}>{search.to}</Text>
-                </View>
-                <Text style={styles.recentSearchTime}>{search.time}</Text>
+        {recentSearches.map((search, index) => (
+          <TouchableOpacity
+            key={index}
+            style={styles.recentSearchCard}
+            onPress={() => handleRecentSearch(search)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.recentSearchContent}>
+              <View style={styles.recentSearchRoute}>
+                <Text style={styles.recentSearchFrom}>{search.from}</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={16}
+                  color="#90A4AE"
+                  style={styles.arrowIcon}
+                />
+                <Text style={styles.recentSearchTo}>{search.to}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#CCC" />
-            </TouchableOpacity>
-          )
-        )}
+              <Text style={styles.recentSearchTime}>{search.time}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#B0BEC5" />
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Popular Destinations */}
+      {/* Popular Destinations - modern grid, more color and spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Popular Destinations</Text>
         <View style={styles.popularGrid}>
@@ -227,119 +230,141 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8F9FA",
   },
   searchContainer: {
-    backgroundColor: "#FFFFFF",
-    margin: 20,
-    padding: 20,
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginHorizontal: 18,
+    marginTop: 18,
+    marginBottom: 18,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 18,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
-    color: "#333",
-    marginBottom: 15,
+    color: "#2193b0",
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   inputContainer: {
-    marginBottom: 15,
+    marginBottom: 12,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#F1F8FF",
     borderRadius: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "#E5E5E5",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   inputIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   textInput: {
     flex: 1,
     fontSize: 16,
     color: "#333",
+    paddingVertical: 4,
   },
   locationButton: {
-    padding: 5,
+    marginLeft: 8,
+    padding: 4,
+    borderRadius: 8,
+    backgroundColor: "#E3F2FD",
   },
   swapButton: {
     alignSelf: "center",
-    padding: 10,
-    marginVertical: 5,
+    marginVertical: 6,
+    backgroundColor: "#E3F2FD",
+    borderRadius: 16,
+    padding: 6,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   searchButton: {
-    backgroundColor: "#0066CC",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 15,
-    borderRadius: 12,
+    backgroundColor: "#2193b0",
+    borderRadius: 14,
+    paddingVertical: 14,
     marginTop: 10,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   searchIcon: {
     marginRight: 8,
   },
   searchButtonText: {
-    color: "#FFFFFF",
-    fontSize: 18,
+    color: "#fff",
+    fontSize: 16,
     fontWeight: "bold",
+    letterSpacing: 0.2,
   },
   section: {
-    paddingHorizontal: 20,
-    marginBottom: 25,
+    marginHorizontal: 18,
+    marginBottom: 18,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   quickOptionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    marginTop: 10,
   },
   quickOption: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 12,
+    width: "47%",
+    backgroundColor: "#F1F8FF",
+    borderRadius: 14,
     alignItems: "center",
+    paddingVertical: 18,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   quickOptionText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#333",
     marginTop: 8,
-    textAlign: "center",
+    fontSize: 15,
+    color: "#2193b0",
+    fontWeight: "600",
+    letterSpacing: 0.2,
   },
   recentSearchCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 15,
+    backgroundColor: "#F1F8FF",
     borderRadius: 12,
-    marginBottom: 12,
+    padding: 14,
+    marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   recentSearchContent: {
     flex: 1,
@@ -347,29 +372,30 @@ const styles = StyleSheet.create({
   recentSearchRoute: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   recentSearchFrom: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 15,
+    color: "#2193b0",
+    fontWeight: "bold",
   },
   arrowIcon: {
-    marginHorizontal: 8,
+    marginHorizontal: 6,
   },
   recentSearchTo: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 15,
+    color: "#FF6B6B",
+    fontWeight: "bold",
   },
   recentSearchTime: {
-    fontSize: 12,
-    color: "#999",
+    fontSize: 13,
+    color: "#90A4AE",
   },
   popularGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    marginTop: 10,
   },
   popularDestination: {
     width: "48%",

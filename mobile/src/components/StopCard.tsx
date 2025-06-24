@@ -42,7 +42,11 @@ const StopCard: React.FC<StopCardProps> = ({ stop, onPress }) => {
   };
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
       <View style={styles.header}>
         <View style={styles.stopIcon}>
           <Ionicons
@@ -81,18 +85,15 @@ const StopCard: React.FC<StopCardProps> = ({ stop, onPress }) => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
+    backgroundColor: "#F1F8FF",
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 14,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   header: {
     flexDirection: "row",
@@ -100,25 +101,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   stopIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F8F9FA",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E3F2FD",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 14,
   },
   stopInfo: {
     flex: 1,
   },
   stopName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "bold",
-    color: "#333",
+    color: "#2193b0",
     marginBottom: 2,
   },
   stopDistance: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#666",
   },
   lines: {
@@ -127,26 +128,26 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   lineTag: {
-    backgroundColor: "#0066CC",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: "#2193b0",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 12,
-    marginRight: 6,
+    marginRight: 8,
     marginBottom: 4,
   },
   lineText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "bold",
   },
   arrivals: {
     borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
+    borderTopColor: "#E3F2FD",
     paddingTop: 10,
   },
   arrivalsTitle: {
     fontSize: 14,
-    color: "#666",
+    color: "#90A4AE",
     marginBottom: 6,
   },
   arrivalTimes: {
@@ -155,7 +156,7 @@ const styles = StyleSheet.create({
   arrivalTime: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#0066CC",
+    color: "#2193b0",
     marginRight: 15,
   },
 });

@@ -69,30 +69,34 @@ const RouteScreen = () => {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
+      {/* Header - bold, modern, with more spacing */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Routes</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddRoute}>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={handleAddRoute}
+          activeOpacity={0.8}
+        >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
-      {/* Live Updates Banner */}
+      {/* Live Updates Banner - more color and shadow for visibility */}
       <View style={styles.liveUpdatesBanner}>
         <View style={styles.liveIndicator}>
           <View style={styles.liveDot} />
           <Text style={styles.liveText}>LIVE</Text>
         </View>
         <Text style={styles.bannerText}>Real-time updates active</Text>
-        <Ionicons name="refresh" size={20} color="#00AA00" />
+        <Ionicons name="refresh" size={20} color="#00C851" />
       </View>
 
-      {/* Saved Routes */}
+      {/* Saved Routes - card-based, with empty state illustration */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Saved Routes</Text>
         {savedRoutes.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="map-outline" size={48} color="#CCC" />
+            <Ionicons name="map-outline" size={48} color="#B0BEC5" />
             <Text style={styles.emptyStateText}>No saved routes yet</Text>
             <Text style={styles.emptyStateSubtext}>
               Plan a trip to get started
@@ -104,7 +108,9 @@ const RouteScreen = () => {
               key={route.id}
               style={styles.routeCard}
               onPress={() => handleRoutePress(route)}
+              activeOpacity={0.85}
             >
+              {/* Route Header - name, destination, favorite button */}
               <View style={styles.routeHeader}>
                 <View style={styles.routeInfo}>
                   <Text style={styles.routeName}>{route.name}</Text>
@@ -115,28 +121,31 @@ const RouteScreen = () => {
                 <TouchableOpacity
                   onPress={() => toggleFavorite(route.id)}
                   style={styles.favoriteButton}
+                  activeOpacity={0.7}
                 >
                   <Ionicons
                     name={route.isFavorite ? "heart" : "heart-outline"}
                     size={24}
-                    color={route.isFavorite ? "#FF6B6B" : "#CCC"}
+                    color={route.isFavorite ? "#FF6B6B" : "#B0BEC5"}
                   />
                 </TouchableOpacity>
               </View>
 
+              {/* Route Details - duration, next departure */}
               <View style={styles.routeDetails}>
                 <View style={styles.routeStat}>
-                  <Ionicons name="time" size={16} color="#0066CC" />
+                  <Ionicons name="time" size={16} color="#2193b0" />
                   <Text style={styles.routeStatText}>{route.duration}</Text>
                 </View>
                 <View style={styles.routeStat}>
-                  <Ionicons name="train" size={16} color="#0066CC" />
+                  <Ionicons name="train" size={16} color="#2193b0" />
                   <Text style={styles.routeStatText}>
                     Next: {route.nextDeparture}
                   </Text>
                 </View>
               </View>
 
+              {/* Route Steps - show first 2, then a summary if more */}
               <View style={styles.routeSteps}>
                 {route.steps.slice(0, 2).map((step, index) => (
                   <Text key={index} style={styles.stepText}>
@@ -154,29 +163,30 @@ const RouteScreen = () => {
         )}
       </View>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - modern grid, more color and spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActionsGrid}>
-          <TouchableOpacity style={styles.quickAction}>
-            <Ionicons name="notifications" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickAction} activeOpacity={0.8}>
+            <Ionicons name="notifications" size={24} color="#2193b0" />
             <Text style={styles.quickActionText}>Route Alerts</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction}>
-            <Ionicons name="time" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickAction} activeOpacity={0.8}>
+            <Ionicons name="time" size={24} color="#2193b0" />
             <Text style={styles.quickActionText}>Schedule</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction}>
-            <Ionicons name="analytics" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickAction} activeOpacity={0.8}>
+            <Ionicons name="analytics" size={24} color="#2193b0" />
             <Text style={styles.quickActionText}>Trip History</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction}>
-            <Ionicons name="settings" size={24} color="#0066CC" />
+          <TouchableOpacity style={styles.quickAction} activeOpacity={0.8}>
+            <Ionicons name="settings" size={24} color="#2193b0" />
             <Text style={styles.quickActionText}>Preferences</Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* Extra bottom padding for scrollable content */}
       <View style={styles.bottomPadding} />
     </ScrollView>
   );
@@ -191,111 +201,133 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+    backgroundColor: "#2193b0",
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: "bold",
-    color: "#333",
+    color: "#fff",
+    letterSpacing: 0.5,
   },
   addButton: {
-    backgroundColor: "#0066CC",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: "#FF6B6B",
+    borderRadius: 20,
+    padding: 8,
+    shadowColor: "#FF6B6B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   liveUpdatesBanner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E8F5E8",
-    marginHorizontal: 20,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 20,
+    backgroundColor: "#E0F7FA",
+    padding: 14,
+    borderRadius: 14,
+    marginHorizontal: 22,
+    marginBottom: 18,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.07,
+    shadowRadius: 4,
+    elevation: 2,
   },
   liveIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 10,
   },
   liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#00AA00",
-    marginRight: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#00C851",
+    marginRight: 4,
   },
   liveText: {
-    fontSize: 12,
+    fontSize: 13,
+    color: "#00C851",
     fontWeight: "bold",
-    color: "#00AA00",
+    letterSpacing: 1,
   },
   bannerText: {
+    fontSize: 15,
+    color: "#2193b0",
+    fontWeight: "500",
     flex: 1,
-    fontSize: 14,
-    color: "#00AA00",
   },
   section: {
-    paddingHorizontal: 20,
-    marginBottom: 25,
+    marginHorizontal: 22,
+    marginBottom: 18,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
-    color: "#333",
-    marginBottom: 15,
+    color: "#2193b0",
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   emptyState: {
-    backgroundColor: "#FFFFFF",
-    padding: 40,
-    borderRadius: 12,
     alignItems: "center",
+    paddingVertical: 24,
   },
   emptyStateText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#666",
-    marginTop: 12,
+    fontSize: 17,
+    color: "#90A4AE",
+    fontWeight: "bold",
+    marginTop: 8,
   },
   emptyStateSubtext: {
     fontSize: 14,
-    color: "#999",
-    marginTop: 4,
+    color: "#B0BEC5",
+    marginTop: 2,
   },
   routeCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 15,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
+    backgroundColor: "#F1F8FF",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   routeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   routeInfo: {
     flex: 1,
   },
   routeName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "bold",
-    color: "#333",
-    marginBottom: 4,
+    color: "#2193b0",
+    marginBottom: 2,
   },
   routeDestination: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#666",
   },
   favoriteButton: {
@@ -303,63 +335,61 @@ const styles = StyleSheet.create({
   },
   routeDetails: {
     flexDirection: "row",
-    marginBottom: 12,
+    justifyContent: "space-between",
+    marginBottom: 6,
   },
   routeStat: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 20,
+    marginRight: 16,
   },
   routeStatText: {
     fontSize: 14,
-    color: "#333",
+    color: "#2193b0",
     marginLeft: 6,
+    fontWeight: "600",
   },
   routeSteps: {
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
+    marginTop: 4,
   },
   stepText: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 4,
+    fontSize: 14,
+    color: "#333",
+    marginBottom: 2,
   },
   moreSteps: {
-    fontSize: 12,
-    color: "#0066CC",
+    fontSize: 13,
+    color: "#90A4AE",
     fontStyle: "italic",
   },
   quickActionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    marginTop: 10,
   },
   quickAction: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
-    padding: 20,
-    borderRadius: 12,
+    width: "47%",
+    backgroundColor: "#F1F8FF",
+    borderRadius: 14,
     alignItems: "center",
+    paddingVertical: 18,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   quickActionText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
     marginTop: 8,
-    textAlign: "center",
+    fontSize: 15,
+    color: "#2193b0",
+    fontWeight: "600",
+    letterSpacing: 0.2,
   },
   bottomPadding: {
-    height: 20,
+    height: 40,
   },
 });
 

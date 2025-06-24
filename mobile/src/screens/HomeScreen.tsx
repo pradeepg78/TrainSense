@@ -69,10 +69,12 @@ const HomeScreen = () => {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      {/* Header Section */}
+      {/* Header Section - uses a vibrant blue gradient for a modern transit feel */}
       <LinearGradient
-        colors={["#0066CC", "#004499"]}
+        colors={["#2193b0", "#6dd5ed"]} // more vibrant blue gradient
         style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
         <View style={styles.headerContent}>
           <Text style={styles.greetingText}>{getGreeting()}!</Text>
@@ -81,63 +83,66 @@ const HomeScreen = () => {
         </View>
       </LinearGradient>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - now with more spacing and shadow for a card effect */}
       <View style={styles.quickActionsContainer}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActionsGrid}>
+          {/* Each action is a card with a subtle shadow and press feedback */}
           <TouchableOpacity
             style={styles.quickActionCard}
             onPress={handleQuickPlan}
+            activeOpacity={0.8}
           >
-            <Ionicons name="navigate" size={32} color="#0066CC" />
+            <Ionicons name="navigate" size={32} color="#2193b0" />
             <Text style={styles.quickActionText}>Plan Trip</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.quickActionCard}
             onPress={handleNearbyStops}
+            activeOpacity={0.8}
           >
-            <Ionicons name="location" size={32} color="#0066CC" />
+            <Ionicons name="location" size={32} color="#2193b0" />
             <Text style={styles.quickActionText}>Nearby Stops</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionCard}>
-            <Ionicons name="time" size={32} color="#0066CC" />
+          <TouchableOpacity style={styles.quickActionCard} activeOpacity={0.8}>
+            <Ionicons name="time" size={32} color="#2193b0" />
             <Text style={styles.quickActionText}>Live Times</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionCard}>
-            <Ionicons name="notifications" size={32} color="#0066CC" />
+          <TouchableOpacity style={styles.quickActionCard} activeOpacity={0.8}>
+            <Ionicons name="notifications" size={32} color="#2193b0" />
             <Text style={styles.quickActionText}>Alerts</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Service Status */}
+      {/* Service Status - card with colored dots and more spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Service Status</Text>
         <View style={styles.serviceStatusCard}>
           <View style={styles.serviceItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#00AA00" }]} />
+            <View style={[styles.statusDot, { backgroundColor: "#00C851" }]} />
             <Text style={styles.serviceText}>Subway: Good Service</Text>
           </View>
           <View style={styles.serviceItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#FF6600" }]} />
+            <View style={[styles.statusDot, { backgroundColor: "#ffbb33" }]} />
             <Text style={styles.serviceText}>Bus: Some Delays</Text>
           </View>
           <View style={styles.serviceItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#00AA00" }]} />
+            <View style={[styles.statusDot, { backgroundColor: "#00C851" }]} />
             <Text style={styles.serviceText}>LIRR: Good Service</Text>
           </View>
         </View>
       </View>
 
-      {/* Favorite Routes */}
+      {/* Favorite Routes - card with empty state illustration */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Favorite Routes</Text>
         {favoriteRoutes.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="heart-outline" size={48} color="#CCC" />
+            <Ionicons name="heart-outline" size={48} color="#B0BEC5" />
             <Text style={styles.emptyStateText}>No favorite routes yet</Text>
             <Text style={styles.emptyStateSubtext}>
               Add routes to see them here
@@ -150,7 +155,7 @@ const HomeScreen = () => {
         )}
       </View>
 
-      {/* Recent Activity */}
+      {/* Recent Activity - card with subtle background and spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Recent Activity</Text>
         <View style={styles.recentActivityCard}>
@@ -167,6 +172,7 @@ const HomeScreen = () => {
         </View>
       </View>
 
+      {/* Extra bottom padding for scrollable content */}
       <View style={styles.bottomPadding} />
     </ScrollView>
   );
@@ -179,149 +185,159 @@ const styles = StyleSheet.create({
   },
   headerGradient: {
     paddingHorizontal: 20,
-    paddingVertical: 30,
-    marginBottom: 20,
+    paddingVertical: 36,
+    marginBottom: 24,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   headerContent: {
     alignItems: "center",
   },
   greetingText: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "bold",
     color: "#FFFFFF",
-    marginBottom: 5,
+    marginBottom: 6,
+    letterSpacing: 0.5,
   },
   timeText: {
-    fontSize: 18,
+    fontSize: 20,
     color: "#FFFFFF",
-    opacity: 0.9,
-    marginBottom: 5,
+    opacity: 0.95,
+    marginBottom: 6,
+    fontWeight: "500",
   },
   locationText: {
     fontSize: 16,
-    color: "#FFFFFF",
-    opacity: 0.8,
+    color: "#E3F2FD",
+    marginTop: 2,
   },
   quickActionsContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 25,
+    marginHorizontal: 18,
+    marginBottom: 18,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
-    color: "#333",
-    marginBottom: 15,
+    color: "#2193b0",
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   quickActionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    marginTop: 10,
   },
   quickActionCard: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
-    padding: 20,
-    borderRadius: 12,
+    width: "47%",
+    backgroundColor: "#F1F8FF",
+    borderRadius: 14,
     alignItems: "center",
+    paddingVertical: 18,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   quickActionText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
     marginTop: 8,
-    textAlign: "center",
+    fontSize: 15,
+    color: "#2193b0",
+    fontWeight: "600",
+    letterSpacing: 0.2,
   },
   section: {
-    paddingHorizontal: 20,
-    marginBottom: 25,
+    marginHorizontal: 18,
+    marginBottom: 18,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   serviceStatusCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 15,
+    backgroundColor: "#F1F8FF",
     borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 14,
+    marginTop: 6,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   serviceItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    marginBottom: 8,
   },
   statusDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    marginRight: 12,
+    marginRight: 10,
   },
   serviceText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#333",
+    fontWeight: "500",
   },
   emptyState: {
-    backgroundColor: "#FFFFFF",
-    padding: 40,
-    borderRadius: 12,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: 24,
   },
   emptyStateText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#666",
-    marginTop: 12,
+    fontSize: 17,
+    color: "#90A4AE",
+    fontWeight: "bold",
+    marginTop: 8,
   },
   emptyStateSubtext: {
     fontSize: 14,
-    color: "#999",
-    marginTop: 4,
+    color: "#B0BEC5",
+    marginTop: 2,
   },
   recentActivityCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: "#F1F8FF",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    shadowColor: "#2193b0",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   recentActivityText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#333",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   recentActivityTime: {
-    fontSize: 12,
-    color: "#999",
+    fontSize: 13,
+    color: "#90A4AE",
   },
   bottomPadding: {
-    height: 20,
+    height: 40,
   },
 });
 
