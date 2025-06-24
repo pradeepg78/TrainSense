@@ -45,7 +45,7 @@ export default function App() {
             height: 60,
           },
           headerStyle: {
-            backgroundColor: "#0066CC",
+            backgroundColor: "#2193b0",
           },
           headerTintColor: "#FFFFFF",
           headerTitleStyle: {
@@ -56,7 +56,7 @@ export default function App() {
         <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={{ title: "Transit Companion" }}
+          options={{ title: "Transit Companion", headerShown: false }}
         />
         <Tab.Screen
           name="Map"

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   RefreshControl,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -69,18 +70,20 @@ const HomeScreen = () => {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      {/* Header Section - uses a vibrant blue gradient for a modern transit feel */}
+      {/* Header Section - gradient now bleeds into the top safe area */}
       <LinearGradient
-        colors={["#2193b0", "#6dd5ed"]} // more vibrant blue gradient
+        colors={["#2193b0", "#6dd5ed"]}
         style={styles.headerGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <View style={styles.headerContent}>
-          <Text style={styles.greetingText}>{getGreeting()}!</Text>
-          <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-          <Text style={styles.locationText}>📍 New York City</Text>
-        </View>
+        <SafeAreaView style={{ backgroundColor: "transparent" }}>
+          <View style={styles.headerContent}>
+            <Text style={styles.greetingText}>{getGreeting()}!</Text>
+            <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
+            <Text style={styles.locationText}>📍 New York City</Text>
+          </View>
+        </SafeAreaView>
       </LinearGradient>
 
       {/* Quick Actions - now with more spacing and shadow for a card effect */}
@@ -197,6 +200,7 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     alignItems: "center",
+    paddingTop: 32,
   },
   greetingText: {
     fontSize: 32,
