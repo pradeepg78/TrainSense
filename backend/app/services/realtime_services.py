@@ -4,7 +4,7 @@ from flask import current_app
 # from app.models.transit import Route, Stop, Trip
 
 class RealtimeService:
-    routes_to_feed = {
+    ROUTES_TO_FEED = {
         '1': '123456',
         '2': '123456', 
         '3': '123456',
@@ -41,42 +41,87 @@ class RealtimeService:
             raise ValueError("MTA_REALTIME_FEEDS is not set in the configuration.")
         
     def get_route_updates(self, route_id):
-        if route_id not in self.routes_to_feed:
-            raise ValueError(f"Route {route_id} cannot be found.")
+        """Get the feed URL for a given route ID"""
+        route_id = route_id.upper()  
+        if route_id not in self.ROUTES_TO_FEED:
+            return {
+                'success': False,
+                'error': f'Route {route_id} is not a valid MTA route ID.'
+            }
         
-        feed_key = self.routes_to_feed[route_id.upper()]
+        feed_key = self.ROUTES_TO_FEED[route_id.upper()]
         feed_url = self.feed_urls[feed_key]
+        if not feed_url:
+            return {
+                'success': False,
+                'error': f'Feed URL not found for {feed_key}'
+            }
         
         response_data = self._make_api_request(feed_url)
+        
+        if response_data['success']:
+            response_data['route_id'] = route_id
+            response_data['feed_key'] = feed_key
+        else: 
+            response_data['route_id'] = route_id
+            raise ValueError("get_route_updates: Failed to add feed_key to response_data")
         
         print(f"get_route_updates -> response_data: {response_data}")
         
         return response_data
-        
-    def _get_feed_for_route(self, route_id):
-        """Get the feed URL for a given route ID"""
-        feed_key = self.routes_to_feed.get(route_id.upper())
-        if not feed_key:
-            raise ValueError(f"No feed found for route {route_id}")
-        
-        feed_url = current_app.config['MTA_REALTIME_FEEDS'].get(feed_key)
-        if not feed_url:
-            raise ValueError(f"No URL found for feed key {feed_key}")
-        
-        print(f"_get_feed_for_route -> feed_url: {feed_url}")
-        
-        return feed_url
     
     def _make_api_request(self, url):
-        api_key = self.api_key
+        """Make a HTTP request to the MTA API"""
+        start_time = time.time()
         
-        headers = {
-            'x-api-key': api_key
-        }
+        try:
+            headers = {'x-api-key': self.api_key}
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            duration = time.time() - start_time
+            
+            #TODO: RESTURN AND PARSE THE RESPONSE content into a readable format
+            
+            return {
+                'success': True,
+                'data_size_bytes': len(response.content),
+                'response_time_seconds': round(duration, 3),
+                'status_code': response.status_code,
+                'timestamp': datetime.now().isoformat(),
+                'headers': dict(response.headers)
+            }
+            
+        except requests.exceptions.Timeout:
+            return {
+                'success': False,
+                'error': 'MTA API request timed out',
+                'response_time_seconds': round(time.time() - start_time, 3)
+            }
+        except requests.exceptions.HTTPError as e:
+            return {
+                'success': False,
+                'error': f'HTTP error: {e.response.status_code}',
+                'status_code': e.response.status_code,
+                'response_time_seconds': round(time.time() - start_time, 3)
+            }
+        except requests.exceptions.RequestException as e:
+            return {
+                'success': False,
+                'error': f'Request failed: {str(e)}',
+                'response_time_seconds': round(time.time() - start_time, 3)
+            }
         
-        response = requests.get(url, headers=headers)
+        # headers = {
+        #     'x-api-key': self.api_key
+        # }
         
-        print(f"_make_api_request -> response: {response}, status_code: {response.status_code}")
+        # response = requests.get(url, headers=headers)
+        # if not response.ok:
+        #     raise ValueError(f"Failed to fetch data from {url}. Status code: {response.status_code}")
         
-        return response
+        # print(f"_make_api_request -> response: {response}, status_code: {response.status_code}")
+        
+        # #! Raw data rn, parse it or return as .JSON maybe
+        # return response
         
