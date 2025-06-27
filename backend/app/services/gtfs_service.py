@@ -3,7 +3,7 @@ import os
 import requests
 import zipfile
 import csv
-import pandas as pd
+# import pandas as pd
 from datetime import datetime, timedelta
 from flask import current_app
 from app import db
@@ -13,9 +13,9 @@ class GTFSService:
     """Service for downloading and processing MTA GTFS static data"""
     
     def __init__(self):
-        self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
-        self.gtfs_dir = os.path.join(self.data_dir, 'gtfs')
-        self.processed_dir = os.path.join(self.data_dir, 'processed')
+        self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data') # create the data directory
+        self.gtfs_dir = os.path.join(self.data_dir, 'gtfs') # create the gtfs directory inside data
+        self.processed_dir = os.path.join(self.data_dir, 'processed') # create the processed directory inside data
         
         # Ensure directories exist
         os.makedirs(self.gtfs_dir, exist_ok=True)
@@ -35,7 +35,7 @@ class GTFSService:
         print("📥 Downloading GTFS static data from MTA...")
         
         try:
-            url = current_app.config['MTA_GTFS_STATIC_URL']
+            url = current_app.config['MTA_GTFS_STATIC_URL'] # grab url defined in config.py
             response = requests.get(url, timeout=30)
             response.raise_for_status()
             
@@ -59,6 +59,8 @@ class GTFSService:
             
             # List extracted files
             files = os.listdir(self.gtfs_dir)
+            
+            # Create the files for the data we just pulled
             txt_files = [f for f in files if f.endswith('.txt')]
             print(f"✅ Extracted {len(txt_files)} GTFS files: {txt_files}")
             
@@ -81,6 +83,8 @@ class GTFSService:
         routes_updated = 0
         errors = 0
         
+        # Open the file and parse it row by row like a dictionary
+        # the encoding parameter tells python to decode the file's bytes into characters
         with open(routes_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             

@@ -13,6 +13,7 @@ class Route(db.Model):
     route_color = db.Column(db.String(6), default='000000')  # Hex color
     text_color = db.Column(db.String(6), default='FFFFFF')  # Text color
     
+    # repr methods are basically a toString() method for when the objects are called
     def __repr__(self):
         return f'<Route {self.short_name}: {self.long_name}>'
     

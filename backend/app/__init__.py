@@ -1,8 +1,8 @@
 # backend/app/__init__.py
-from flask import Flask
-from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
+from flask import Flask # Main Frame Webwork Class
+from flask_cors import CORS # Allows mobile app to make requests to the API
+from flask_sqlalchemy import SQLAlchemy # Database Objext Relational Mapping
+from flask_migrate import Migrate # Database Schemma Versioning
 from config import Config
 
 # Initialize extensions
@@ -11,12 +11,23 @@ migrate = Migrate()
 
 def create_app(config_class=Config):
     """Application factory pattern"""
-    app = Flask(__name__)
-    app.config.from_object(config_class)
+    app = Flask(__name__) # Tells Flask where to find its resources
+    
+    # app.config: dictionary object from Flask
+    # from_object(): loads all uppercase attributes from a given class or object into app.config
+    # config_class: the class Config imported from config.py, set in the parameter
+    app.config.from_object(config_class) # Load configuration from Config class
     
     # Initialize Flask extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
+    
+    # Connect SQL Alchemy to this specific Flask app
+    db.init_app(app) 
+    
+    # Add schema versioning
+    # Keeps track of changes to models (like adding columns or tables)
+    migrate.init_app(app, db) 
+    
+    # Allow requests from other domains
     CORS(app)
     
     # Add a simple health check route

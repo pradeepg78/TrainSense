@@ -9,13 +9,13 @@ class Config:
     """Flask application configuration"""
     
     # Flask settings
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    FLASK_ENV = os.environ.get('FLASK_ENV') or 'development'
-    DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production' # Secret Key for Flask security (sessions, cookies, etc)
+    FLASK_ENV = os.environ.get('FLASK_ENV') or 'development' # Development Environement
+    DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true' # Debugger is True, to check for any errors
     
     # Database settings
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///mta_subway_app.db'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///mta_subway_app.db' # Create SQLite db called mta_subway_app
+    SQLALCHEMY_TRACK_MODIFICATIONS = False # Disable feature that uses extra memory
     
     # MTA API Configuration
     MTA_API_KEY = os.environ.get('MTA_API_KEY')
@@ -43,6 +43,9 @@ class Config:
     CACHE_TYPE = "simple"
     CACHE_DEFAULT_TIMEOUT = 300  # 5 minutes
     
+    # Static because it only reads Config.MTA_API_KEY once at startup
+    # Lets me call Config.validate_config() without needing an instance of Config
+    # Config values are loaded at the beginning, so we use static method here
     @staticmethod
     def validate_config():
         """Validate that required config is present"""
