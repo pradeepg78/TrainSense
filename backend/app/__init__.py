@@ -16,6 +16,7 @@ def create_app(config_class=Config):
     # app.config: dictionary object from Flask
     # from_object(): loads all uppercase attributes from a given class or object into app.config
     # config_class: the class Config imported from config.py, set in the parameter
+    # This function allows me to call current_app.config.get('KEY') anywhere in the app to get configuration values
     app.config.from_object(config_class) # Load configuration from Config class
     
     # Initialize Flask extensions
