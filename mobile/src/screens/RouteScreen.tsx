@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons"; //icons
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,58 +10,65 @@ import {
   View,
 } from "react-native";
 
+// services
+import ApiRouteCard from "../components/ApiRouteCard";
+import { apiService, Route, showApiError } from "../services/api";
+
 const RouteScreen = () => {
-  //savedRoutes is a predefined (for now some bs values) user routes
-  const [savedRoutes, setSavedRoutes] = useState([
-    {
-      id: 1,
-      name: "Home to Work",
-      from: "Brooklyn Heights",
-      to: "Midtown Manhattan",
-      duration: "35 min",
-      steps: [
-        "Walk 5 min to High St-Brooklyn Bridge",
-        "Take 4,5,6 to 14th St-Union Sq",
-        "Transfer to N,Q,R,W",
-        "Take N,Q,R,W to Times Sq-42nd St",
-      ],
-      nextDeparture: "8:15 AM",
-      isFavorite: true,
-    },
-    {
-      id: 2,
-      name: "Weekend Trip",
-      from: "Manhattan",
-      to: "Coney Island",
-      duration: "45 min",
-      steps: ["Take N,Q to Coney Island-Stillwell Av"],
-      nextDeparture: "10:30 AM",
-      isFavorite: false,
-    },
-  ]);
+  const [savedRoutes, setSavedRoutes] = useState<Route[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Load routes on component mount
+  useEffect(() => {
+    loadRoutes();
+  }, []);
+
+  const loadRoutes = async () => {
+    setLoading(true);
+    try {
+      const response = await apiService.getRoutes();
+      if (response.success && response.data) {
+        setSavedRoutes(response.data);
+      } else {
+        showApiError(response.error || "Failed to load routes");
+      }
+    } catch (error) {
+      console.error("Error loading routes:", error);
+      showApiError("Failed to load routes");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadRoutes();
+    } catch (error) {
+      showApiError("Failed to refresh routes");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   //triggered when a user taps a route CARD
-  const handleRoutePress = (route: any) => {
+  const handleRoutePress = (route: Route) => {
     Alert.alert(
       //shows an alert with some details in it
-      route.name,
-      `${route.from} → ${route.to}\n\nDuration: ${route.duration}\nNext departure: ${route.nextDeparture}`,
+      `${route.short_name} Line`,
+      `${route.long_name}\n\nRoute ID: ${route.id}`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Start Navigation", onPress: () => {} },
+        { text: "View Details", onPress: () => {} },
       ]
     );
   };
 
-  //toggles the isFavorite flag on a rooute to make it fav
-  const toggleFavorite = (routeId: number) => {
-    setSavedRoutes((routes) =>
-      routes.map((route) =>
-        route.id === routeId
-          ? { ...route, isFavorite: !route.isFavorite }
-          : route
-      )
-    );
+  //toggles the isFavorite flag on a route to make it fav
+  const toggleFavorite = (routeId: string) => {
+    // In a real app, this would save to backend/local storage
+    Alert.alert("Favorite", "Favorite functionality coming soon!");
   };
 
   const handleAddRoute = () => {
@@ -68,10 +76,15 @@ const RouteScreen = () => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       {/* Header - bold, modern, with more spacing */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Routes</Text>
+        <Text style={styles.headerTitle}>Available Routes</Text>
         <TouchableOpacity
           style={styles.addButton}
           onPress={handleAddRoute}
@@ -93,72 +106,29 @@ const RouteScreen = () => {
 
       {/* Saved Routes - card-based, with empty state illustration */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Saved Routes</Text>
-        {savedRoutes.length === 0 ? (
+        <Text style={styles.sectionTitle}>Subway Lines</Text>
+        {loading ? (
           <View style={styles.emptyState}>
-            <Ionicons name="map-outline" size={48} color="#B0BEC5" />
-            <Text style={styles.emptyStateText}>No saved routes yet</Text>
+            <Ionicons name="refresh" size={48} color="#B0BEC5" />
+            <Text style={styles.emptyStateText}>Loading routes...</Text>
+          </View>
+        ) : savedRoutes.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="train-outline" size={48} color="#B0BEC5" />
+            <Text style={styles.emptyStateText}>No routes available</Text>
             <Text style={styles.emptyStateSubtext}>
-              Plan a trip to get started
+              Check your connection and try again
             </Text>
           </View>
         ) : (
           savedRoutes.map((route) => (
-            <TouchableOpacity
+            <ApiRouteCard
               key={route.id}
-              style={styles.routeCard}
+              route={route}
               onPress={() => handleRoutePress(route)}
-              activeOpacity={0.85}
-            >
-              {/* Route Header - name, destination, favorite button */}
-              <View style={styles.routeHeader}>
-                <View style={styles.routeInfo}>
-                  <Text style={styles.routeName}>{route.name}</Text>
-                  <Text style={styles.routeDestination}>
-                    {route.from} → {route.to}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => toggleFavorite(route.id)}
-                  style={styles.favoriteButton}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={route.isFavorite ? "heart" : "heart-outline"}
-                    size={24}
-                    color={route.isFavorite ? "#FF6B6B" : "#B0BEC5"}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Route Details - duration, next departure */}
-              <View style={styles.routeDetails}>
-                <View style={styles.routeStat}>
-                  <Ionicons name="time" size={16} color="#2193b0" />
-                  <Text style={styles.routeStatText}>{route.duration}</Text>
-                </View>
-                <View style={styles.routeStat}>
-                  <Ionicons name="train" size={16} color="#2193b0" />
-                  <Text style={styles.routeStatText}>
-                    Next: {route.nextDeparture}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Route Steps - show first 2, then a summary if more */}
-              <View style={styles.routeSteps}>
-                {route.steps.slice(0, 2).map((step, index) => (
-                  <Text key={index} style={styles.stepText}>
-                    {index + 1}. {step}
-                  </Text>
-                ))}
-                {route.steps.length > 2 && (
-                  <Text style={styles.moreSteps}>
-                    +{route.steps.length - 2} more steps
-                  </Text>
-                )}
-              </View>
-            </TouchableOpacity>
+              onFavoritePress={() => toggleFavorite(route.id)}
+              isFavorite={false}
+            />
           ))
         )}
       </View>

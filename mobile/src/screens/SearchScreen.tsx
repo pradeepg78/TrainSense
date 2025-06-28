@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons"; //icons like emojis
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
+  FlatList,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,19 +11,46 @@ import {
   View,
 } from "react-native";
 
+// services
+import { apiService, showApiError, Stop, TripPlan } from "../services/api";
+
 const SearchScreen = () => {
   const [fromLocation, setFromLocation] = useState(""); //variable fromLocation default is empty, use setFromLocation to change
   const [toLocation, setToLocation] = useState(""); //variable toLocation default is empty string, use setToLocation to change
-  const [searchResults, setSearchResults] = useState([]); //variable searchResults hold results from backendsearch, empty array bc backend not implemented yet
+  const [searchResults, setSearchResults] = useState<Stop[]>([]); //variable searchResults hold results from backendsearch, empty array bc backend not implemented yet
   const [recentSearches, setRecentSearches] = useState([
     //same, recentSearches variable, use setRecentSearches to change; default is just a bunch of defaullt places
     { from: "Times Square", to: "Brooklyn Bridge", time: "2 hours ago" },
     { from: "Central Park", to: "JFK Airport", time: "Yesterday" },
     { from: "Wall Street", to: "Yankee Stadium", time: "2 days ago" },
   ]);
+  const [loading, setLoading] = useState(false);
+  const [stops, setStops] = useState<Stop[]>([]);
+
+  // Load stops on component mount
+  useEffect(() => {
+    loadStops();
+  }, []);
+
+  const loadStops = async () => {
+    setLoading(true);
+    try {
+      const response = await apiService.getStops(); // Load all stops
+      if (response.success && response.data) {
+        setStops(response.data);
+      } else {
+        showApiError(response.error || "Failed to load stops");
+      }
+    } catch (error) {
+      console.error("Error loading stops:", error);
+      showApiError("Failed to load stops");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   //search function
-  const handleSearch = () => {
+  const handleSearch = async () => {
     //triggered when user presses "Find Routes"
     if (!fromLocation || !toLocation) {
       //if either input is blank, throws an error
@@ -30,11 +58,65 @@ const SearchScreen = () => {
       return;
     }
 
-    // BACKEND TODO: call the backend API for trip planning
-    Alert.alert(
-      "Search Results",
-      `Planning trip from ${fromLocation} to ${toLocation}...`
+    // Find stop IDs for the locations
+    const fromStop = stops.find((stop) =>
+      stop.name.toLowerCase().includes(fromLocation.toLowerCase())
     );
+    const toStop = stops.find((stop) =>
+      stop.name.toLowerCase().includes(toLocation.toLowerCase())
+    );
+
+    if (!fromStop || !toStop) {
+      Alert.alert(
+        "Error",
+        "Could not find the specified stations. Please check the station names."
+      );
+      return;
+    }
+
+    // Call the backend API for trip planning
+    try {
+      const response = await apiService.planTrip(fromStop.id, toStop.id);
+      if (response.success && response.data) {
+        const trip: TripPlan = response.data;
+
+        // Show trip plan in an alert
+        const routeDetails =
+          trip.routes.length > 0
+            ? trip.routes
+                .map(
+                  (routeInfo, index) =>
+                    `${index + 1}. Take ${routeInfo.route.short_name} line (${
+                      routeInfo.type
+                    })`
+                )
+                .join("\n")
+            : "No direct route found";
+
+        Alert.alert(
+          "Trip Plan",
+          `From: ${trip.origin.name}\nTo: ${trip.destination.name}\n\nEstimated Time: ${trip.estimated_time}\nTransfers: ${trip.transfers}\n\n${routeDetails}`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Start Navigation",
+              onPress: () => {
+                // In a real app, this would start turn-by-turn navigation
+                Alert.alert(
+                  "Navigation",
+                  "Turn-by-turn navigation coming soon!"
+                );
+              },
+            },
+          ]
+        );
+      } else {
+        showApiError(response.error || "Failed to plan trip");
+      }
+    } catch (error) {
+      console.error("Error planning trip:", error);
+      showApiError("Failed to plan trip");
+    }
   };
 
   //swaps the to, from inputs
@@ -61,6 +143,33 @@ const SearchScreen = () => {
     setFromLocation(search.from); //recentSearches has a .from and .to attribute
     setToLocation(search.to);
   };
+
+  const handleStopSelect = (stop: Stop, field: "from" | "to") => {
+    if (field === "from") {
+      setFromLocation(stop.name);
+    } else {
+      setToLocation(stop.name);
+    }
+  };
+
+  const renderStopItem = ({ item }: { item: Stop }) => (
+    <TouchableOpacity
+      style={styles.stopItem}
+      onPress={() => handleStopSelect(item, "to")}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="train" size={20} color="#2193b0" />
+      <View style={styles.stopInfo}>
+        <Text style={styles.stopName}>{item.name}</Text>
+        <Text style={styles.stopId}>ID: {item.id}</Text>
+        {item.routes && item.routes.length > 0 && (
+          <Text style={styles.stopRoutes}>
+            Routes: {item.routes.map((route) => route.short_name).join(", ")}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <ScrollView style={styles.container}>
@@ -145,6 +254,33 @@ const SearchScreen = () => {
         </TouchableOpacity>
       </View>
 
+      {/* Available Stops */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Available Stops</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons name="refresh" size={24} color="#B0BEC5" />
+            <Text style={styles.loadingText}>Loading stops...</Text>
+          </View>
+        ) : stops.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="train-outline" size={48} color="#B0BEC5" />
+            <Text style={styles.emptyStateText}>No stops available</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Check your connection and try again
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={stops.slice(0, 20)} // Show first 20 stops
+            renderItem={renderStopItem}
+            keyExtractor={(item) => item.id}
+            scrollEnabled={false}
+            style={styles.stopsList}
+          />
+        )}
+      </View>
+
       {/* Quick Options - modern grid, more color and spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Options</Text>
@@ -196,29 +332,7 @@ const SearchScreen = () => {
         ))}
       </View>
 
-      {/* Popular Destinations - modern grid, more color and spacing */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Popular Destinations</Text>
-        <View style={styles.popularGrid}>
-          {[
-            "🏢 Times Square",
-            "🌉 Brooklyn Bridge",
-            "✈️ JFK Airport",
-            "🏟️ Yankee Stadium",
-            "🎭 Broadway",
-            "🗽 Statue of Liberty",
-          ].map((destination, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.popularDestination}
-              onPress={() => setToLocation(destination.substring(2))}
-            >
-              <Text style={styles.popularDestinationText}>{destination}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
+      {/* Extra bottom padding for scrollable content */}
       <View style={styles.bottomPadding} />
     </ScrollView>
   );
@@ -391,31 +505,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#90A4AE",
   },
-  popularGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
+  stopsList: {
     marginTop: 10,
   },
-  popularDestination: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  stopItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
   },
-  popularDestinationText: {
+  stopInfo: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  stopName: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#2193b0",
+  },
+  stopId: {
     fontSize: 14,
-    color: "#333",
-    textAlign: "center",
+    color: "#90A4AE",
+  },
+  stopRoutes: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 2,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#2193b0",
+    marginTop: 10,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyStateText: {
+    fontSize: 18,
+    color: "#2193b0",
+    marginBottom: 10,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: "#90A4AE",
   },
   bottomPadding: {
     height: 20,

@@ -13,13 +13,27 @@ import {
 } from "react-native";
 
 // components
-import RouteCard from "../components/RouteCard";
+import ApiRouteCard from "../components/ApiRouteCard";
+// services
+import {
+  apiService,
+  Route,
+  ServiceStatus,
+  showApiError,
+} from "../services/api";
 
 const HomeScreen = () => {
   const [refreshing, setRefreshing] = useState(false); //var refreshing used to show pull to refresh spinner, setRefreshing to change
   const [currentTime, setCurrentTime] = useState(new Date()); //currentTime updates every min to show live time
   const [nearbyStops, setNearbyStops] = useState([]); //nearbyStops for nearby stops, needs to be implemented
-  const [favoriteRoutes, setFavoriteRoutes] = useState([]); //fav routes
+  const [favoriteRoutes, setFavoriteRoutes] = useState<Route[]>([]); //fav routes
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Load initial data
+  useEffect(() => {
+    loadInitialData();
+  }, []);
 
   // Update time every minute
   useEffect(() => {
@@ -30,22 +44,154 @@ const HomeScreen = () => {
     return () => clearInterval(timer);
   }, []);
 
+  const loadInitialData = async () => {
+    setLoading(true);
+    try {
+      // Load service status
+      const statusResponse = await apiService.getServiceStatus();
+      if (statusResponse.success && statusResponse.data) {
+        setServiceStatus(statusResponse.data);
+      }
+
+      // Load some routes for favorites (first 5)
+      const routesResponse = await apiService.getRoutes();
+      if (routesResponse.success && routesResponse.data) {
+        setFavoriteRoutes(routesResponse.data.slice(0, 5));
+      }
+    } catch (error) {
+      console.error("Error loading initial data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   //called when the user pulls to refresh the screen
   const onRefresh = async () => {
     setRefreshing(true);
-    // BACKEND TODO: fetch fresh data from your backend
-    setTimeout(() => {
+    try {
+      await loadInitialData();
+    } catch (error) {
+      showApiError("Failed to refresh data");
+    } finally {
       setRefreshing(false);
-    }, 2000); //2 seconds, fake
+    }
   };
 
   //placeholder function
   const handleQuickPlan = () => {
-    Alert.alert("Quick Plan", "Trip planning feature coming soon!");
+    // Navigate to Search screen for trip planning
+    Alert.alert("Plan Trip", "Navigate to the Search tab to plan your trip!", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Go to Search",
+        onPress: () => {
+          // In a real app, this would navigate to the Search tab
+          // For now, just show an alert
+          Alert.alert(
+            "Navigation",
+            "This would navigate to the Search tab in a real app"
+          );
+        },
+      },
+    ]);
   };
 
-  const handleNearbyStops = () => {
-    Alert.alert("Nearby Stops", "Location-based features coming soon!");
+  const handleNearbyStops = async () => {
+    // Get user's current location and find nearby stops
+    try {
+      // For demo purposes, use Times Square coordinates
+      const latitude = 40.7589;
+      const longitude = -73.9851;
+
+      // Get all stops and filter by distance
+      const response = await apiService.getStops();
+      if (response.success && response.data) {
+        // Calculate distance and filter nearby stops
+        const nearbyStops = response.data
+          .map((stop) => {
+            const distance =
+              Math.sqrt(
+                Math.pow(stop.latitude - latitude, 2) +
+                  Math.pow(stop.longitude - longitude, 2)
+              ) * 111; // Convert to km
+            return { ...stop, distance_km: distance };
+          })
+          .filter((stop) => stop.distance_km <= 1.0)
+          .sort((a, b) => a.distance_km - b.distance_km)
+          .slice(0, 5);
+
+        const stopsList = nearbyStops
+          .map(
+            (stop) => `• ${stop.name} (${stop.distance_km.toFixed(1)}km away)`
+          )
+          .join("\n");
+
+        Alert.alert(
+          "Nearby Stops",
+          `Stops near Times Square:\n\n${stopsList}`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "View on Map",
+              onPress: () => {
+                Alert.alert(
+                  "Map",
+                  "This would open the map with nearby stops highlighted"
+                );
+              },
+            },
+          ]
+        );
+      } else {
+        showApiError("Failed to load nearby stops");
+      }
+    } catch (error) {
+      console.error("Error getting nearby stops:", error);
+      Alert.alert(
+        "Nearby Stops",
+        "Unable to load nearby stops. Please try again."
+      );
+    }
+  };
+
+  const handleLiveTimes = () => {
+    // Show live arrival times for major stations
+    Alert.alert(
+      "Live Times",
+      "Major Station Arrivals:\n\nTimes Square:\n• N train: 2 min\n• Q train: 5 min\n• 1 train: 3 min\n\nGrand Central:\n• 4 train: 1 min\n• 5 train: 4 min\n• 6 train: 7 min\n\nUnion Square:\n• L train: 3 min\n• N train: 6 min\n• 4 train: 2 min",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "View All",
+          onPress: () => {
+            Alert.alert(
+              "Live Times",
+              "This would show a full list of all station arrivals"
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const handleAlerts = () => {
+    // Show service alerts
+    Alert.alert(
+      "Service Alerts",
+      "Current Alerts:\n\n✅ Subway: Good Service\n⚠️  Some delays on 4/5/6 lines due to signal work\n✅ All other lines running normally\n\nLast updated: 2 minutes ago",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "View Details",
+          onPress: () => {
+            Alert.alert(
+              "Alerts",
+              "This would show detailed service alerts and updates"
+            );
+          },
+        },
+      ]
+    );
   };
 
   const formatTime = (date: Date) => {
@@ -61,6 +207,34 @@ const HomeScreen = () => {
     if (hour < 12) return "Good Morning";
     if (hour < 17) return "Good Afternoon";
     return "Good Evening";
+  };
+
+  const renderServiceStatus = () => {
+    if (serviceStatus.length === 0) {
+      return (
+        <View style={styles.serviceStatusCard}>
+          <Text style={styles.loadingText}>Loading service status...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.serviceStatusCard}>
+        {serviceStatus.slice(0, 5).map((status, index) => (
+          <View key={status.id} style={styles.serviceItem}>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: status.status.color },
+              ]}
+            />
+            <Text style={styles.serviceText}>
+              {status.short_name}: {status.status.message}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
   };
 
   return (
@@ -109,12 +283,20 @@ const HomeScreen = () => {
             <Text style={styles.quickActionText}>Nearby Stops</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionCard} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={handleLiveTimes}
+            activeOpacity={0.8}
+          >
             <Ionicons name="time" size={32} color="#2193b0" />
             <Text style={styles.quickActionText}>Live Times</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionCard} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={handleAlerts}
+            activeOpacity={0.8}
+          >
             <Ionicons name="notifications" size={32} color="#2193b0" />
             <Text style={styles.quickActionText}>Alerts</Text>
           </TouchableOpacity>
@@ -124,36 +306,37 @@ const HomeScreen = () => {
       {/* Service Status - card with colored dots and more spacing */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Service Status</Text>
-        <View style={styles.serviceStatusCard}>
-          <View style={styles.serviceItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#00C851" }]} />
-            <Text style={styles.serviceText}>Subway: Good Service</Text>
-          </View>
-          <View style={styles.serviceItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#ffbb33" }]} />
-            <Text style={styles.serviceText}>Bus: Some Delays</Text>
-          </View>
-          <View style={styles.serviceItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#00C851" }]} />
-            <Text style={styles.serviceText}>LIRR: Good Service</Text>
-          </View>
-        </View>
+        {renderServiceStatus()}
       </View>
 
       {/* Favorite Routes - card with empty state illustration */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Favorite Routes</Text>
-        {favoriteRoutes.length === 0 ? (
+        <Text style={styles.sectionTitle}>Available Routes</Text>
+        {loading ? (
           <View style={styles.emptyState}>
-            <Ionicons name="heart-outline" size={48} color="#B0BEC5" />
-            <Text style={styles.emptyStateText}>No favorite routes yet</Text>
+            <Ionicons name="refresh" size={48} color="#B0BEC5" />
+            <Text style={styles.emptyStateText}>Loading routes...</Text>
+          </View>
+        ) : favoriteRoutes.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="train-outline" size={48} color="#B0BEC5" />
+            <Text style={styles.emptyStateText}>No routes available</Text>
             <Text style={styles.emptyStateSubtext}>
-              Add routes to see them here
+              Check your connection and try again
             </Text>
           </View>
         ) : (
           favoriteRoutes.map((route, index) => (
-            <RouteCard key={index} route={route} />
+            <ApiRouteCard
+              key={route.id}
+              route={route}
+              onPress={() =>
+                Alert.alert(
+                  "Route Details",
+                  `Viewing details for ${route.short_name} line`
+                )
+              }
+            />
           ))
         )}
       </View>
@@ -342,6 +525,12 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  loadingText: {
+    fontSize: 15,
+    color: "#333",
+    fontWeight: "500",
+    textAlign: "center",
   },
 });
 

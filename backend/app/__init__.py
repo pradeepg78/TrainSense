@@ -31,6 +31,10 @@ def create_app(config_class=Config):
     # Allow requests from other domains
     CORS(app)
     
+    # Register API routes
+    from app.routes import init_app as init_routes
+    init_routes(app)
+    
     # Add a simple health check route
     @app.route('/')
     def health_check():
