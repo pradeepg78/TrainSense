@@ -112,16 +112,27 @@ class RealtimeService:
                 'response_time_seconds': round(time.time() - start_time, 3)
             }
         
-        # headers = {
-        #     'x-api-key': self.api_key
-        # }
+    def get_feed_health(self):
+        """Check health of all MTA feeds"""
+        results = {}
         
-        # response = requests.get(url, headers=headers)
-        # if not response.ok:
-        #     raise ValueError(f"Failed to fetch data from {url}. Status code: {response.status_code}")
+        for feed_key, feed_url in self.feed_urls.items():
+            api_result = self._make_api_request(feed_url)
+            
+            if api_result['success']:
+                results[feed_key] = {
+                    'status': 'healthy',
+                    'response_time': api_result['response_time_seconds'],
+                    'data_size': api_result['data_size_bytes']
+                }
+            else:
+                results[feed_key] = {
+                    'status': 'unhealthy',
+                    'error': api_result['error']
+                }
         
-        # print(f"_make_api_request -> response: {response}, status_code: {response.status_code}")
-        
-        # #! Raw data rn, parse it or return as .JSON maybe
-        # return response
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'feeds': results
+        }
         
