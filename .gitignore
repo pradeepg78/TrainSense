@@ -38,3 +38,87 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# More Stuff to Ignore
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+backend/trainSenseVenv/
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+mobile/.env
+
+# Flask
+instance/
+.webassets-cache
+*.db
+*.sqlite3
+backend/*.db
+backend/*.sqlite3
+
+# API Keys and Secrets
+config/secrets.py
+secrets.json
+.secrets/
+api_keys.py
+
+# Database
+migrations/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Cache directories
+.cache/
+.pytest_cache/
+
+# MTA specific data files
+mta_data/
+gtfs_data/
+realtime_feeds/
