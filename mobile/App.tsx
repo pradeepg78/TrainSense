@@ -56,7 +56,7 @@ export default function App() {
         <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={{ title: "Transit Companion", headerShown: false }}
+          options={{ title: "Home", headerShown: false }}
         />
         <Tab.Screen
           name="Map"

@@ -2,15 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Dimensions,
-  Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import MapView, { Marker, Region } from "react-native-maps";
-import { apiService, MapStation } from "../services/api";
+import MapView, { Marker, Polyline, Region } from "react-native-maps";
+import { StationModal } from "../components/StationModal";
+import { apiService, MapStation, Route, Stop } from "../services/api";
+import { getMtaColor } from "../utils/mtaColors";
 
 const { width, height } = Dimensions.get("window");
 
@@ -24,15 +24,111 @@ const MapScreen = () => {
 
   const [zoomLevel, setZoomLevel] = useState("city"); // neighborhood, city, borough
   const [stations, setStations] = useState<MapStation[]>([]);
-  const [selectedStation, setSelectedStation] = useState<MapStation | null>(
-    null
-  );
+  const [selectedStation, setSelectedStation] = useState<Stop | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showStationModal, setShowStationModal] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const mapRef = useRef<MapView>(null);
+
+  const [routeStationLines, setRouteStationLines] = useState<{
+    [routeId: string]: { latitude: number; longitude: number }[];
+  }>({});
+
+  const [routes, setRoutes] = useState<Route[]>([]);
+
+  const OFFSET = 0.00008; // Adjust as needed for visual separation
+
+  // Hardcoded shared shape groups for major trunk lines (expand as needed)
+  const SHARED_SHAPE_GROUPS: { [shape: string]: string[] } = {
+    queens_blvd: ["E", "F", "M", "R"],
+    sixth_ave: ["B", "D", "F", "M"],
+    eighth_ave: ["A", "C", "E"],
+    broadway: ["N", "Q", "R", "W"],
+    lexington: ["4", "5", "6"],
+    seventh_ave: ["1", "2", "3"],
+  };
+
+  // Map routeId to group key (no duplicate keys)
+  const ROUTE_TO_GROUP: { [route: string]: string } = {
+    E: "queens_blvd",
+    F: "queens_blvd",
+    M: "queens_blvd",
+    R: "queens_blvd",
+    B: "sixth_ave",
+    D: "sixth_ave",
+    A: "eighth_ave",
+    C: "eighth_ave",
+    N: "broadway",
+    Q: "broadway",
+    W: "broadway",
+    "4": "lexington",
+    "5": "lexington",
+    "6": "lexington",
+    "1": "seventh_ave",
+    "2": "seventh_ave",
+    "3": "seventh_ave",
+  };
+
+  // Offset a polyline perpendicular to its path
+  function offsetPolyline(
+    coords: { latitude: number; longitude: number }[],
+    offsetIndex: number,
+    total: number,
+    offsetAmount = 0.00008
+  ) {
+    if (total <= 1) return coords; // No offset needed for single line
+
+    const center = (total - 1) / 2;
+    const actualOffset = (offsetIndex - center) * offsetAmount;
+
+    return coords.map((point, i) => {
+      // Calculate direction vector between adjacent points
+      let dx = 0,
+        dy = 0;
+
+      if (i === 0 && coords.length > 1) {
+        // First point: use direction to next point
+        dx = coords[i + 1].longitude - point.longitude;
+        dy = coords[i + 1].latitude - point.latitude;
+      } else if (i === coords.length - 1 && coords.length > 1) {
+        // Last point: use direction from previous point
+        dx = point.longitude - coords[i - 1].longitude;
+        dy = point.latitude - coords[i - 1].latitude;
+      } else if (coords.length > 1) {
+        // Middle point: use average direction
+        dx = (coords[i + 1].longitude - coords[i - 1].longitude) / 2;
+        dy = (coords[i + 1].latitude - coords[i - 1].latitude) / 2;
+      }
+
+      // Normalize the direction vector
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length === 0) return point; // No direction, return original point
+
+      // Calculate perpendicular vector (rotate 90 degrees)
+      const perpX = -dy / length;
+      const perpY = dx / length;
+
+      // Apply offset perpendicular to the line direction
+      return {
+        latitude: point.latitude + perpY * actualOffset,
+        longitude: point.longitude + perpX * actualOffset,
+      };
+    });
+  }
+
+  function offsetCoords(
+    coords: { latitude: number; longitude: number }[],
+    offsetIndex: number
+  ) {
+    // Offset latitude and longitude slightly for each route
+    // This is a simple diagonal offset; for more realism, you could offset perpendicular to the segment direction
+    return coords.map((coord) => ({
+      latitude: coord.latitude + offsetIndex * OFFSET,
+      longitude: coord.longitude + offsetIndex * OFFSET,
+    }));
+  }
 
   // Load stations for current map view
   const loadStations = async (newRegion?: Region, newZoomLevel?: string) => {
@@ -76,16 +172,92 @@ const MapScreen = () => {
     }
   }, [stations]);
 
+  useEffect(() => {
+    async function fetchRouteShapes() {
+      const uniqueRoutes = new Set(
+        stations.flatMap((station) => (station.routes || []).map((r) => r.id))
+      );
+      const lines: any = {};
+      for (const routeId of uniqueRoutes) {
+        const res = await apiService.getRouteShape(routeId);
+        if (res.success && res.data) {
+          lines[routeId] = res.data;
+        }
+      }
+      setRouteStationLines(lines);
+    }
+    if (stations.length > 0) fetchRouteShapes();
+  }, [stations]);
+
+  useEffect(() => {
+    async function fetchRoutes() {
+      const response = await apiService.getRoutes();
+      if (response.success && response.data) {
+        setRoutes(response.data);
+      }
+    }
+    fetchRoutes();
+  }, []);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadStations();
     setRefreshing(false);
   };
 
-  const handleMarkerPress = (station: MapStation) => {
-    console.log("Marker pressed:", station.name);
-    setSelectedStation(station);
+  const handleMarkerPress = (stationOrGroup: MapStation | MapStation[]) => {
+    let stopData: Stop;
+    if (Array.isArray(stationOrGroup)) {
+      // Transfer hub: aggregate all unique routes from all stations in the group
+      const allRoutes = Array.from(
+        new Set(
+          stationOrGroup.flatMap((s) => (s.routes || []).map((r) => r.id))
+        )
+      );
+      // Find route objects for allRoutes from the stations
+      const routeObjs = allRoutes.map((routeId) => {
+        // Find the first matching route object from any station
+        for (const s of stationOrGroup) {
+          const found = (s.routes || []).find((r) => r.id === routeId);
+          if (found) return found;
+        }
+        return {
+          id: routeId,
+          short_name: routeId,
+          long_name: routeId,
+          route_color: "000000",
+          text_color: "FFFFFF",
+        };
+      });
+      // Always use the first real station's id, not the synthetic hub_id
+      const stopId = stationOrGroup[0].id;
+      stopData = {
+        id: stopId,
+        name: stationOrGroup[0].name,
+        latitude:
+          stationOrGroup.reduce((sum, s) => sum + s.latitude, 0) /
+          stationOrGroup.length,
+        longitude:
+          stationOrGroup.reduce((sum, s) => sum + s.longitude, 0) /
+          stationOrGroup.length,
+        routes: routeObjs,
+      };
+    } else {
+      stopData = {
+        id: stationOrGroup.id,
+        name: stationOrGroup.name,
+        latitude: stationOrGroup.latitude,
+        longitude: stationOrGroup.longitude,
+        routes: stationOrGroup.routes || [],
+      };
+    }
+    setSelectedStation(stopData);
     setShowStationModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowStationModal(false);
+    setSelectedStation(null);
   };
 
   const handleLocationPress = () => {
@@ -105,7 +277,7 @@ const MapScreen = () => {
 
     // Determine zoom level based on delta
     let newZoomLevel = "city";
-    if (newRegion.latitudeDelta < 0.01) {
+    if (newRegion.latitudeDelta < 0.03) {
       newZoomLevel = "neighborhood";
     } else if (newRegion.latitudeDelta > 0.1) {
       newZoomLevel = "borough";
@@ -138,70 +310,130 @@ const MapScreen = () => {
     return station.routes[0]?.route_color || "#0066CC";
   };
 
-  const StationModal = () => (
-    <Modal
-      visible={showStationModal}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setShowStationModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{selectedStation?.name}</Text>
-            <TouchableOpacity
-              onPress={() => setShowStationModal(false)}
-              style={styles.closeButton}
-            >
-              <Ionicons name="close" size={24} color="#666" />
-            </TouchableOpacity>
-          </View>
+  const getRouteColor = (routeId: string) => {
+    // Try to get color from loaded routes
+    const found = routes.find((r) => r.id === routeId);
+    if (found) return `#${found.route_color}`;
+    // Fallback to hardcoded map
+    const routeColors: { [key: string]: string } = {
+      A: "#0039A6",
+      C: "#0039A6",
+      E: "#0039A6",
+      B: "#FF6319",
+      D: "#FF6319",
+      F: "#FF6319",
+      M: "#FF6319",
+      G: "#6CBE45",
+      J: "#996633",
+      Z: "#996633",
+      L: "#A7A9AC",
+      N: "#FCCC0A",
+      Q: "#FCCC0A",
+      R: "#FCCC0A",
+      W: "#FCCC0A",
+      "1": "#EE352E",
+      "2": "#EE352E",
+      "3": "#EE352E",
+      "4": "#00933C",
+      "5": "#00933C",
+      "6": "#00933C",
+      "7": "#B933AD",
+      SI: "#0039A6",
+    };
+    return routeColors[routeId] || "#2193b0";
+  };
 
-          <ScrollView style={styles.modalBody}>
-            {selectedStation?.routes && selectedStation.routes.length > 0 ? (
-              <View>
-                <Text style={styles.sectionTitle}>Routes</Text>
-                <View style={styles.routesContainer}>
-                  {selectedStation.routes.map((route, index) => (
-                    <View
-                      key={route.id}
-                      style={[
-                        styles.routeBadge,
-                        { backgroundColor: `#${route.route_color}` },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.routeText,
-                          { color: `#${route.text_color}` },
-                        ]}
-                      >
-                        {route.short_name}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              <Text style={styles.noDataText}>
-                No route information available
-              </Text>
-            )}
+  // Utility: Identify transfer stations (served by more than one route)
+  function getTransferStationIds(stations: MapStation[]): Set<string> {
+    return new Set(
+      stations
+        .filter((station) => (station.routes?.length || 0) > 1)
+        .map((station) => station.id)
+    );
+  }
 
-            <View style={styles.stationInfo}>
-              <Text style={styles.infoText}>
-                Station ID: {selectedStation?.id}
-              </Text>
-              <Text style={styles.infoText}>
-                Coordinates: {selectedStation?.latitude.toFixed(4)},{" "}
-                {selectedStation?.longitude.toFixed(4)}
-              </Text>
-            </View>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
+  // Utility: Offset a segment between two points, but keep endpoints at the station coordinates
+  function offsetSegment(
+    start: { latitude: number; longitude: number },
+    end: { latitude: number; longitude: number },
+    offsetIndex: number,
+    applyOffset: boolean
+  ): [
+    { latitude: number; longitude: number },
+    { latitude: number; longitude: number }
+  ] {
+    if (!applyOffset) return [start, end];
+    const OFFSET = 0.00008; // Adjust as needed
+    // Calculate direction vector
+    const dx = end.longitude - start.longitude;
+    const dy = end.latitude - start.latitude;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    // Perpendicular vector (normalized)
+    const px = -dy / length;
+    const py = dx / length;
+    // Offset both points perpendicular to the segment
+    return [
+      {
+        latitude: start.latitude + px * offsetIndex * OFFSET,
+        longitude: start.longitude + py * offsetIndex * OFFSET,
+      },
+      {
+        latitude: end.latitude + px * offsetIndex * OFFSET,
+        longitude: end.longitude + py * offsetIndex * OFFSET,
+      },
+    ];
+  }
+
+  const [trunkSegments, setTrunkSegments] = useState<
+    {
+      color: string;
+      route: string;
+      polyline: { latitude: number; longitude: number }[];
+    }[]
+  >([]);
+
+  // Fetch trunk segments for merged lines
+  useEffect(() => {
+    async function fetchTrunkSegments() {
+      try {
+        console.log("Fetching trunk segments...");
+        const response = await fetch("http://127.0.0.1:5001/api/trunk-shapes");
+        const data = await response.json();
+        if (data.success && data.data) {
+          console.log("Loaded trunk segments:", data.data.length);
+          setTrunkSegments(data.data);
+        } else {
+          console.error("Failed to load trunk segments:", data.error);
+        }
+      } catch (e) {
+        console.error("Error fetching trunk shapes", e);
+      }
+    }
+    fetchTrunkSegments();
+  }, []);
+
+  // Dynamic offset based on zoom level
+  const getDynamicOffset = () => {
+    if (zoomLevel === "borough") return 0.0004; // very zoomed out
+    if (zoomLevel === "city") return 0.0002; // medium
+    return 0.0001; // zoomed in
+  };
+
+  // Helper: is major transfer station (4+ routes)
+  function isMajorTransfer(station: MapStation) {
+    return (station.routes?.length || 0) >= 4;
+  }
+
+  // Helper: Only show dots if zoomed in close enough
+  function shouldShowStationDots() {
+    return zoomLevel === "neighborhood" || zoomLevel === "city";
+  }
+
+  // Helper: Offset dot perpendicular to the line (if possible)
+  function getDotOffset(station: MapStation) {
+    // For now, just a small fixed offset (could be improved with line direction)
+    return { top: 2, left: 2 };
+  }
 
   return (
     <View style={styles.container}>
@@ -212,28 +444,105 @@ const MapScreen = () => {
         onRegionChangeComplete={onRegionChangeComplete}
         showsUserLocation={true}
         showsMyLocationButton={false}
+        mapType="mutedStandard"
       >
-        {stations.map((station) => (
-          <Marker
-            key={station.id}
-            coordinate={{
-              latitude: station.latitude,
-              longitude: station.longitude,
-            }}
-            onPress={() => handleMarkerPress(station)}
-          >
-            <View
-              style={[
-                styles.marker,
-                {
-                  width: getMarkerSize(station, zoomLevel),
-                  height: getMarkerSize(station, zoomLevel),
-                  backgroundColor: getMarkerColor(station),
-                },
-              ]}
+        {/* Always render subway lines (polylines) at all zoom levels */}
+        {(() => {
+          console.log(
+            "Rendering polylines:",
+            trunkSegments.length,
+            "trunk segments"
+          );
+          return trunkSegments.map((segment, index) => (
+            <Polyline
+              key={`trunk-${index}-${segment.route}`}
+              coordinates={segment.polyline}
+              strokeColor={getMtaColor(segment.route).background}
+              strokeWidth={8}
+              zIndex={10}
+              lineCap="round"
             />
-          </Marker>
-        ))}
+          ));
+        })()}
+        {/* Test polyline to ensure rendering works */}
+        <Polyline
+          key="test-polyline"
+          coordinates={[
+            { latitude: 40.7831, longitude: -73.9712 },
+            { latitude: 40.7589, longitude: -73.9851 },
+            { latitude: 40.7505, longitude: -73.9934 },
+          ]}
+          strokeColor="#FF0000"
+          strokeWidth={10}
+          zIndex={20}
+          lineCap="round"
+        />
+        {/* Fallback: render routeStationLines if no trunk segments */}
+        {trunkSegments.length === 0 &&
+          Object.entries(routeStationLines).map(([routeId, coords]) => (
+            <Polyline
+              key={`fallback-route-${routeId}`}
+              coordinates={coords}
+              strokeColor={getMtaColor(routeId).background}
+              strokeWidth={8}
+              zIndex={10}
+              lineCap="round"
+            />
+          ))}
+        {/* Draw station markers */}
+        {zoomLevel === "neighborhood" &&
+          (() => {
+            // Group stations by hub_id
+            const hubs: { [hubId: string]: MapStation[] } = {};
+            stations.forEach((station) => {
+              const hubId = station.hub_id || station.id;
+              if (!hubs[hubId]) hubs[hubId] = [];
+              hubs[hubId].push(station);
+            });
+            // For each hub, compute center and routes
+            return Object.entries(hubs).map(([hubId, group]) => {
+              const lat =
+                group.reduce((sum, s) => sum + s.latitude, 0) / group.length;
+              const lon =
+                group.reduce((sum, s) => sum + s.longitude, 0) / group.length;
+              if (group.length === 1) {
+                // Regular station dot
+                return (
+                  <Marker
+                    key={hubId}
+                    coordinate={{ latitude: lat, longitude: lon }}
+                    onPress={() => handleMarkerPress(group[0])}
+                  >
+                    <View style={[styles.stationDot, getDotOffset(group[0])]} />
+                  </Marker>
+                );
+              } else {
+                // Transfer hub ellipse (no route symbols inside)
+                const w = Math.max(
+                  24,
+                  Math.min(24 + 4 * (group.length - 1), 40)
+                );
+                const h = Math.max(
+                  12,
+                  Math.min(12 + 2 * (group.length - 1), 20)
+                );
+                return (
+                  <Marker
+                    key={hubId}
+                    coordinate={{ latitude: lat, longitude: lon }}
+                    onPress={() => handleMarkerPress(group)}
+                  >
+                    <View
+                      style={[
+                        styles.majorOval,
+                        { width: w, height: h, borderRadius: h },
+                      ]}
+                    />
+                  </Marker>
+                );
+              }
+            });
+          })()}
       </MapView>
 
       {/* Controls */}
@@ -285,7 +594,11 @@ const MapScreen = () => {
         <Text style={styles.stationCountText}>{stations.length} stations</Text>
       </View>
 
-      <StationModal />
+      <StationModal
+        visible={showStationModal}
+        onClose={handleCloseModal}
+        station={selectedStation}
+      />
     </View>
   );
 };
@@ -397,76 +710,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: height * 0.7,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    flex: 1,
-  },
-  closeButton: {
-    padding: 5,
-  },
-  modalBody: {
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 10,
-    color: "#333",
-  },
-  routesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 20,
-  },
-  routeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    minWidth: 30,
-    alignItems: "center",
-  },
-  routeText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  stationInfo: {
-    marginTop: 10,
-  },
-  infoText: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 5,
-  },
-  noDataText: {
-    fontSize: 14,
-    color: "#999",
-    fontStyle: "italic",
-    textAlign: "center",
-    marginVertical: 20,
-  },
   spinning: {
     transform: [{ rotate: "360deg" }],
+  },
+  stationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: "#222",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  majorOval: {
+    width: 24,
+    height: 12,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "#6dd5ed", // accent color for major hub
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
 });
 

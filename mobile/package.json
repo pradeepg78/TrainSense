@@ -12,9 +12,12 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
-    "@react-navigation/native": "^7.1.6",
+    "@react-navigation/native": "^7.1.14",
+    "@react-navigation/stack": "^7.4.2",
+    "@rnmapbox/maps": "^10.1.39",
     "ajv": "^8.17.1",
     "expo": "~53.0.12",
     "expo-blur": "~14.1.5",
@@ -34,7 +37,7 @@
     "react-dom": "19.0.0",
     "react-native": "0.79.4",
     "react-native-gesture-handler": "~2.24.0",
-    "react-native-maps": "1.20.1",
+    "react-native-maps": "^1.20.1",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
@@ -44,6 +47,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.0.10",
+    "@types/react-native-maps": "^0.24.1",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",
     "typescript": "~5.8.3"

@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Route } from "../services/api";
+import RouteSymbol from "./RouteSymbol";
 
 interface ApiRouteCardProps {
   route: Route;
@@ -25,23 +26,13 @@ const ApiRouteCard: React.FC<ApiRouteCardProps> = ({
       <View style={styles.header}>
         <View style={styles.routeInfo}>
           <View style={styles.routeNameContainer}>
-            <View
-              style={[
-                styles.routeBadge,
-                {
-                  backgroundColor: `#${route.route_color}`,
-                },
-              ]}
+            <TouchableOpacity
+              onPress={onPress}
+              activeOpacity={0.7}
+              style={{ marginRight: 8 }}
             >
-              <Text
-                style={[
-                  styles.routeShortName,
-                  { color: `#${route.text_color}` },
-                ]}
-              >
-                {route.short_name}
-              </Text>
-            </View>
+              <RouteSymbol routeId={route.short_name} size={32} />
+            </TouchableOpacity>
             <Text style={styles.routeLongName}>{route.long_name}</Text>
           </View>
         </View>

@@ -8,6 +8,9 @@ from datetime import datetime, timedelta
 import json
 import math
 import logging
+import csv
+import os
+from collections import defaultdict, deque
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -63,6 +66,21 @@ def get_stops():
             stop_data = stop.to_dict()
             # Get routes that serve this stop
             routes = stop.get_routes()
+            
+            # If no routes found for the main stop, check directional stops
+            if not routes:
+                # Look for directional stops (N/S suffixes)
+                directional_stops = Stop.query.filter(
+                    (Stop.id == stop.id + 'N') | (Stop.id == stop.id + 'S')
+                ).all()
+                
+                for dir_stop in directional_stops:
+                    dir_routes = dir_stop.get_routes()
+                    for route in dir_routes:
+                        # Check if route already added
+                        if not any(r.id == route.id for r in routes):
+                            routes.append(route)
+            
             stop_data['routes'] = [route.to_dict() for route in routes]
             stations.append(stop_data)
         
@@ -156,7 +174,7 @@ def get_stop_routes(stop_id):
 
 @transit_bp.route('/realtime/<stop_id>', methods=['GET'])
 def get_realtime_updates(stop_id):
-    """Get real-time arrival data for a specific stop"""
+    """Get real-time arrival data for a specific stop or station (aggregates all child stops and transfer hub stops)"""
     try:
         # Get the stop
         stop = Stop.query.get(stop_id)
@@ -166,19 +184,96 @@ def get_realtime_updates(stop_id):
                 'error': 'Stop not found'
             }), 404
         
-        # Get routes that serve this stop
-        routes = stop.get_routes()
-        route_ids = [route.id for route in routes]
+        # --- 1. Build transfer groups from transfers.txt (same logic as /map/stations) ---
+        gtfs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs')
+        transfers_file = os.path.join(gtfs_dir, 'transfers.txt')
+        transfer_graph = defaultdict(set)
+        if os.path.exists(transfers_file):
+            with open(transfers_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    from_stop = row['from_stop_id']
+                    to_stop = row['to_stop_id']
+                    transfer_graph[from_stop].add(to_stop)
+                    transfer_graph[to_stop].add(from_stop)
         
-        # Get real-time data for these routes
+        # Find connected components (transfer hubs)
+        stop_to_hub = {}
+        hub_id_counter = 1
+        visited = set()
+        for s in transfer_graph:
+            if s in visited:
+                continue
+            # BFS to find all connected stops
+            queue = deque([s])
+            group = set()
+            while queue:
+                current_stop = queue.popleft()
+                if current_stop in visited:
+                    continue
+                visited.add(current_stop)
+                group.add(current_stop)
+                for neighbor in transfer_graph[current_stop]:
+                    if neighbor not in visited:
+                        queue.append(neighbor)
+            # Assign a hub_id to all stops in this group
+            hub_id = f"hub_{hub_id_counter}"
+            for s in group:
+                stop_to_hub[s] = hub_id
+            hub_id_counter += 1
+        
+        # --- 2. Gather all relevant stop IDs ---
+        stop_ids = [stop_id]
+        
+        # Check if this stop is part of a transfer hub
+        hub_id = stop_to_hub.get(stop_id)
+        if hub_id:
+            # Add all other stops in the same hub
+            for s, h in stop_to_hub.items():
+                if h == hub_id and s != stop_id:
+                    stop_ids.append(s)
+        
+        # If this is a parent station, add all child stops
+        child_stops = Stop.query.filter(Stop.parent_station == stop_id).all()
+        stop_ids += [child.id for child in child_stops]
+        
+        # Also add directional stops (N/S/E/W suffixes) if not already included
+        for suffix in ['N', 'S', 'E', 'W']:
+            dir_stop_id = stop_id + suffix
+            if dir_stop_id not in stop_ids:
+                dir_stop = Stop.query.get(dir_stop_id)
+                if dir_stop:
+                    stop_ids.append(dir_stop_id)
+        
+        # Remove duplicates
+        stop_ids = list(set(stop_ids))
+        
+        # Get all unique routes that serve any of these stops
+        route_ids = set()
+        for sid in stop_ids:
+            s = Stop.query.get(sid)
+            if s:
+                for route in s.get_routes():
+                    route_ids.add(route.id)
+        route_ids = list(route_ids)
+        
+        # Get real-time data for all these stop IDs
         realtime_service = RealtimeDataService()
-        arrivals = realtime_service.get_arrivals_for_stop(stop_id, route_ids)
+        all_arrivals = []
+        for sid in stop_ids:
+            arrivals = realtime_service.get_arrivals_for_stop(sid, route_ids)
+            for arr in arrivals:
+                arr['stop_id'] = sid  # Tag which platform this arrival is for
+            all_arrivals.extend(arrivals)
+        
+        # Sort by soonest arrival
+        all_arrivals.sort(key=lambda x: x.get('arrival_time', 0))
         
         return jsonify({
             'success': True,
             'data': {
                 'stop': stop.to_dict(),
-                'arrivals': arrivals
+                'arrivals': all_arrivals
             }
         })
     except Exception as e:
@@ -253,9 +348,48 @@ def plan_trip():
 
 @transit_bp.route('/map/stations', methods=['GET'])
 def get_map_stations():
-    """Get all stations for the map view"""
+    """Get all stations for the map view, with transfer hub grouping"""
     try:
-        # Get all stops that are stations or have parent stations
+        # --- 1. Build transfer groups from transfers.txt ---
+        gtfs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs')
+        transfers_file = os.path.join(gtfs_dir, 'transfers.txt')
+        transfer_graph = defaultdict(set)
+        if os.path.exists(transfers_file):
+            with open(transfers_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    from_stop = row['from_stop_id']
+                    to_stop = row['to_stop_id']
+                    transfer_graph[from_stop].add(to_stop)
+                    transfer_graph[to_stop].add(from_stop)
+        
+        # Find connected components (transfer hubs)
+        stop_to_hub = {}
+        hub_id_counter = 1
+        visited = set()
+        for stop in transfer_graph:
+            if stop in visited:
+                continue
+            # BFS to find all connected stops
+            queue = deque([stop])
+            group = set()
+            while queue:
+                s = queue.popleft()
+                if s in visited:
+                    continue
+                visited.add(s)
+                group.add(s)
+                for neighbor in transfer_graph[s]:
+                    if neighbor not in visited:
+                        queue.append(neighbor)
+            # Assign a hub_id to all stops in this group
+            hub_id = f"hub_{hub_id_counter}"
+            for s in group:
+                stop_to_hub[s] = hub_id
+            hub_id_counter += 1
+        # Stops not in any transfer group get their own hub_id
+        # (single stations)
+        # --- 2. Get all stops that are stations or have parent stations ---
         stops = Stop.query.filter(
             (Stop.location_type == 1) | (Stop.parent_station.isnot(None))
         ).all()
@@ -273,7 +407,33 @@ def get_map_stations():
             stop_data = stop.to_dict()
             # Get routes that serve this stop
             routes = stop.get_routes()
+            
+            # If no routes found for the main stop, check directional stops
+            if not routes:
+                # Look for directional stops (N/S suffixes)
+                directional_stops = Stop.query.filter(
+                    (Stop.id == stop.id + 'N') | (Stop.id == stop.id + 'S')
+                ).all()
+                
+                for dir_stop in directional_stops:
+                    dir_routes = dir_stop.get_routes()
+                    for route in dir_routes:
+                        # Check if route already added
+                        if not any(r.id == route.id for r in routes):
+                            routes.append(route)
             stop_data['routes'] = [route.to_dict() for route in routes]
+            # Assign hub_id: use stop.id or parent_station, then map to hub_id
+            sid = stop.id
+            hub_id = stop_to_hub.get(sid)
+            if not hub_id:
+                # Try parent_station
+                parent = stop.parent_station
+                if parent:
+                    hub_id = stop_to_hub.get(parent)
+            if not hub_id:
+                # Not in any group, assign unique
+                hub_id = f"hub_{sid}"
+            stop_data['hub_id'] = hub_id
             stations.append(stop_data)
         
         return jsonify({
@@ -310,14 +470,49 @@ def get_service_status():
         # Get all subway routes
         routes = Route.query.filter_by(route_type=1).all()
         
-        # Get service status for each route
-        realtime_service = RealtimeDataService()
+        # For demonstration, return mock service status with realistic issues
         status_data = []
         
+        # Mock service issues for demonstration
+        mock_issues = {
+            '4': {'status': 'some_delays', 'message': 'Some Delays', 'color': '#ffbb33'},
+            '5': {'status': 'significant_delays', 'message': 'Significant Delays', 'color': '#ff4444'},
+            '6': {'status': 'stops_skipped', 'message': 'Stops Skipped', 'color': '#ff4444'},
+            '7': {'status': 'rerouted', 'message': 'Rerouted', 'color': '#ff8800'},
+            'A': {'status': 'some_delays', 'message': 'Some Delays', 'color': '#ffbb33'},
+            'C': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'E': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'F': {'status': 'station_notice', 'message': 'Station Notice', 'color': '#ff8800'},
+            'M': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'N': {'status': 'some_delays', 'message': 'Some Delays', 'color': '#ffbb33'},
+            'Q': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'R': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'W': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'L': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'G': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'J': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'Z': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            '1': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            '2': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            '3': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            '6X': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            '7X': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+            'FX': {'status': 'good_service', 'message': 'Good Service', 'color': '#00C851'},
+        }
+        
         for route in routes:
-            status = realtime_service.get_route_status(route.id)
             route_data = route.to_dict()
-            route_data['status'] = status
+            
+            # Use mock status if available, otherwise use unknown
+            if route.short_name in mock_issues:
+                route_data['status'] = mock_issues[route.short_name]
+            else:
+                route_data['status'] = {
+                    'status': 'unknown',
+                    'message': 'Unable to determine status',
+                    'color': '#999999'
+                }
+            
             status_data.append(route_data)
         
         return jsonify({
@@ -390,4 +585,221 @@ def get_data_stats():
         return jsonify({
             'success': False,
             'error': str(e)
-        }), 500 
+        }), 500
+
+@transit_bp.route('/route-shape/<route_id>', methods=['GET'])
+def get_route_shape(route_id):
+    """Return the ordered shape points for a route (using shapes.txt)"""
+    # Find a representative shape_id for this route from trips.txt
+    gtfs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs')
+    trips_file = os.path.join(gtfs_dir, 'trips.txt')
+    shapes_file = os.path.join(gtfs_dir, 'shapes.txt')
+    shape_id = None
+    try:
+        with open(trips_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['route_id'] == route_id and row.get('shape_id'):
+                    shape_id = row['shape_id']
+                    break
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading trips.txt: {e}'})
+
+    if not shape_id:
+        return jsonify({'success': False, 'error': 'No shape_id found for this route'})
+
+    # Get all shape points for this shape_id, ordered by shape_pt_sequence
+    shape_points = []
+    try:
+        with open(shapes_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['shape_id'] == shape_id:
+                    shape_points.append({
+                        'lat': float(row['shape_pt_lat']),
+                        'lon': float(row['shape_pt_lon']),
+                        'seq': int(row['shape_pt_sequence'])
+                    })
+        shape_points.sort(key=lambda x: x['seq'])
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading shapes.txt: {e}'})
+
+    return jsonify({'success': True, 'data': [{'latitude': pt['lat'], 'longitude': pt['lon']} for pt in shape_points]})
+
+@transit_bp.route('/route-stations/<route_id>', methods=['GET'])
+def get_route_stations(route_id):
+    """
+    Return the ordered list of consecutive stations (lat/lon) for a route using stop_times.txt and trips.txt.
+    """
+    gtfs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs')
+    trips_file = os.path.join(gtfs_dir, 'trips.txt')
+    stop_times_file = os.path.join(gtfs_dir, 'stop_times.txt')
+    stops_file = os.path.join(gtfs_dir, 'stops.txt')
+
+    # 1. Find a representative trip_id for this route
+    trip_id = None
+    try:
+        with open(trips_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['route_id'] == route_id:
+                    trip_id = row['trip_id']
+                    break
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading trips.txt: {e}'})
+
+    if not trip_id:
+        return jsonify({'success': False, 'error': 'No trip_id found for this route'})
+
+    # 2. Get the ordered stop_ids for this trip
+    stop_sequence = []
+    try:
+        with open(stop_times_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['trip_id'] == trip_id:
+                    stop_sequence.append((int(row['stop_sequence']), row['stop_id']))
+        stop_sequence.sort()
+        stop_ids = [sid for _, sid in stop_sequence]
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading stop_times.txt: {e}'})
+
+    # 3. Get lat/lon for each stop_id (use parent_station if available)
+    stop_coords = {}
+    try:
+        with open(stops_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                stop_coords[row['stop_id']] = {
+                    'latitude': float(row['stop_lat']),
+                    'longitude': float(row['stop_lon']),
+                    'parent_station': row.get('parent_station') or row['stop_id']
+                }
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading stops.txt: {e}'})
+
+    # 4. Only include unique parent stations in order (to avoid platform duplicates)
+    seen = set()
+    ordered_coords = []
+    for stop_id in stop_ids:
+        info = stop_coords.get(stop_id)
+        if not info:
+            continue
+        parent = info['parent_station']
+        if parent not in seen:
+            ordered_coords.append({'latitude': info['latitude'], 'longitude': info['longitude']})
+            seen.add(parent)
+
+    return jsonify({'success': True, 'data': ordered_coords})
+
+@transit_bp.route('/trunk-shapes', methods=['GET'])
+def get_trunk_shapes():
+    """
+    Return trunk segments for known shared routes using representative shapes.
+    """
+    gtfs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs')
+    trips_file = os.path.join(gtfs_dir, 'trips.txt')
+    shapes_file = os.path.join(gtfs_dir, 'shapes.txt')
+    routes_file = os.path.join(gtfs_dir, 'routes.txt')
+
+    # Define known trunk routes that share tracks
+    trunk_definitions = {
+        'queens_blvd': ['E', 'F', 'M', 'R'],
+        'sixth_ave': ['B', 'D', 'F', 'M'],
+        'eighth_ave': ['A', 'C', 'E'],
+        'broadway': ['N', 'Q', 'R', 'W'],
+        'lexington': ['4', '5', '6'],
+        'seventh_ave': ['1', '2', '3'],
+        'canarsie': ['L'],
+        'flushing': ['7'],
+        'franklin': ['S'],
+        'rockaway': ['A'],
+        'staten_island': ['SI'],
+        'shuttle': ['S'],
+        'g': ['G'],
+        'j_z': ['J', 'Z'],
+        'nassau': ['J', 'Z'],
+        'crosstown': ['G'],
+        'queens_blvd_express': ['E', 'F'],
+        'queens_blvd_local': ['M', 'R'],
+        'sixth_ave_express': ['B', 'D'],
+        'sixth_ave_local': ['F', 'M'],
+        'eighth_ave_express': ['A'],
+        'eighth_ave_local': ['C', 'E'],
+        'broadway_express': ['N', 'Q'],
+        'broadway_local': ['R', 'W'],
+        'lexington_express': ['4', '5'],
+        'lexington_local': ['6'],
+        'seventh_ave_express': ['2', '3'],
+        'seventh_ave_local': ['1']
+    }
+
+    # 1. Map route_id -> color
+    route_to_color = {}
+    try:
+        with open(routes_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get('route_id') and row.get('route_color'):
+                    route_to_color[row['route_id']] = row['route_color']
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading routes.txt: {e}'})
+
+    # 2. Map route_id -> all shape_ids (not just the first one)
+    route_to_shapes = defaultdict(list)
+    try:
+        with open(trips_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get('route_id') and row.get('shape_id'):
+                    route_id = row['route_id']
+                    shape_id = row['shape_id']
+                    if shape_id not in route_to_shapes[route_id]:
+                        route_to_shapes[route_id].append(shape_id)
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading trips.txt: {e}'})
+
+    # 3. Map shape_id -> polyline
+    shape_to_polyline = defaultdict(list)
+    try:
+        with open(shapes_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get('shape_id') and row.get('shape_pt_lat') and row.get('shape_pt_lon'):
+                    shape_to_polyline[row['shape_id']].append({
+                        'lat': float(row['shape_pt_lat']),
+                        'lon': float(row['shape_pt_lon']),
+                        'seq': int(row['shape_pt_sequence'])
+                    })
+        # Sort each polyline by sequence
+        for shape_id in shape_to_polyline:
+            shape_to_polyline[shape_id].sort(key=lambda x: x['seq'])
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error reading shapes.txt: {e}'})
+
+    # 4. For each trunk, return segments for each route using all their shapes
+    trunk_segments = []
+    for trunk_name, routes in trunk_definitions.items():
+        # Get all shapes for all routes in this trunk
+        all_shapes = set()
+        for route_id in routes:
+            if route_id in route_to_shapes:
+                all_shapes.update(route_to_shapes[route_id])
+        
+        # For each shape, create segments for all routes that use it
+        for shape_id in all_shapes:
+            if shape_id in shape_to_polyline:
+                polyline = [
+                    {'latitude': pt['lat'], 'longitude': pt['lon']} for pt in shape_to_polyline[shape_id]
+                ]
+                # Create a segment for each route in this trunk that uses this shape
+                for route_id in routes:
+                    if route_id in route_to_color and shape_id in route_to_shapes[route_id]:
+                        color = route_to_color[route_id]
+                        trunk_segments.append({
+                            'route': route_id,
+                            'color': f'#{color}',
+                            'polyline': polyline
+                        })
+    
+    return jsonify({'success': True, 'data': trunk_segments}) 

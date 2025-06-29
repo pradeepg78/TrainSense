@@ -1,8 +1,6 @@
-import React from 'react';
-import { Alert } from 'react-native';
 
 // API Configuration
-const API_BASE_URL = 'http://127.0.0.1:5000/api';
+const API_BASE_URL = 'http://127.0.0.1:5001/api';
 
 // Types for API responses
 export interface Route {
@@ -37,6 +35,7 @@ export interface MapStation {
   latitude: number;
   longitude: number;
   routes?: Route[];
+  hub_id?: string;
 }
 
 export interface TripPlan {
@@ -178,36 +177,14 @@ export const apiService = {
   async getRealtimeHealth(): Promise<ApiResponse<any>> {
     return apiRequest('/realtime/health');
   },
+
+  // Route Stations
+  async getRouteStations(routeId: string): Promise<ApiResponse<Stop[]>> {
+    return apiRequest<Stop[]>(`/route-stations/${routeId}`);
+  },
+
+  // Route Shape
+  async getRouteShape(routeId: string): Promise<ApiResponse<any>> {
+    return apiRequest<any>(`/route-shape/${routeId}`);
+  },
 };
-
-// Utility function to show API errors
-export function showApiError(error: string, title: string = 'API Error') {
-  Alert.alert(title, error, [{ text: 'OK' }]);
-}
-
-// Hook for API state management
-export function useApiState<T>() {
-  const [data, setData] = React.useState<T | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const execute = React.useCallback(async (apiCall: () => Promise<ApiResponse<T>>) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await apiCall();
-      if (response.success && response.data) {
-        setData(response.data);
-      } else {
-        setError(response.error || 'Unknown error occurred');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { data, loading, error, execute };
-}

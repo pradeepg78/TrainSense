@@ -11,16 +11,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import RouteSymbol from "../components/RouteSymbol";
 
 // components
-import ApiRouteCard from "../components/ApiRouteCard";
 // services
-import {
-  apiService,
-  Route,
-  ServiceStatus,
-  showApiError,
-} from "../services/api";
+import { apiService, Route, ServiceStatus } from "../services/api";
 
 const HomeScreen = () => {
   const [refreshing, setRefreshing] = useState(false); //var refreshing used to show pull to refresh spinner, setRefreshing to change
@@ -71,7 +66,7 @@ const HomeScreen = () => {
     try {
       await loadInitialData();
     } catch (error) {
-      showApiError("Failed to refresh data");
+      Alert.alert("Failed to refresh data");
     } finally {
       setRefreshing(false);
     }
@@ -143,7 +138,7 @@ const HomeScreen = () => {
           ]
         );
       } else {
-        showApiError("Failed to load nearby stops");
+        Alert.alert("Failed to load nearby stops");
       }
     } catch (error) {
       console.error("Error getting nearby stops:", error);
@@ -202,6 +197,15 @@ const HomeScreen = () => {
     });
   };
 
+  const formatRouteName = (routeName: string) => {
+    // Convert X routes to diamond symbols
+    if (routeName.endsWith("X")) {
+      const baseRoute = routeName.slice(0, -1); // Remove the X
+      return `${baseRoute}◆`;
+    }
+    return routeName;
+  };
+
   const getGreeting = () => {
     const hour = currentTime.getHours();
     if (hour < 12) return "Good Morning";
@@ -218,19 +222,32 @@ const HomeScreen = () => {
       );
     }
 
+    // Filter out routes with "Unable to determine status" and only show actual issues
+    const problematicRoutes = serviceStatus.filter(
+      (status) =>
+        status.status.message !== "Unable to determine status" &&
+        status.status.status !== "good_service"
+    );
+
+    if (problematicRoutes.length === 0) {
+      return (
+        <View style={styles.serviceStatusCard}>
+          <View style={styles.serviceItem}>
+            <View style={[styles.statusDot, { backgroundColor: "#00AA00" }]} />
+            <Text style={styles.serviceText}>
+              All subway lines running normally
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.serviceStatusCard}>
-        {serviceStatus.slice(0, 5).map((status, index) => (
+        {problematicRoutes.slice(0, 5).map((status, index) => (
           <View key={status.id} style={styles.serviceItem}>
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: status.status.color },
-              ]}
-            />
-            <Text style={styles.serviceText}>
-              {status.short_name}: {status.status.message}
-            </Text>
+            <RouteSymbol routeId={status.short_name} size={28} />
+            <Text style={styles.serviceText}>{status.status.message}</Text>
           </View>
         ))}
       </View>
@@ -307,38 +324,6 @@ const HomeScreen = () => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Service Status</Text>
         {renderServiceStatus()}
-      </View>
-
-      {/* Favorite Routes - card with empty state illustration */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Available Routes</Text>
-        {loading ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="refresh" size={48} color="#B0BEC5" />
-            <Text style={styles.emptyStateText}>Loading routes...</Text>
-          </View>
-        ) : favoriteRoutes.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="train-outline" size={48} color="#B0BEC5" />
-            <Text style={styles.emptyStateText}>No routes available</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Check your connection and try again
-            </Text>
-          </View>
-        ) : (
-          favoriteRoutes.map((route, index) => (
-            <ApiRouteCard
-              key={route.id}
-              route={route}
-              onPress={() =>
-                Alert.alert(
-                  "Route Details",
-                  `Viewing details for ${route.short_name} line`
-                )
-              }
-            />
-          ))
-        )}
       </View>
 
       {/* Recent Activity - card with subtle background and spacing */}

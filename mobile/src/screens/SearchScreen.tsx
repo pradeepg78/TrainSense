@@ -12,7 +12,7 @@ import {
 } from "react-native";
 
 // services
-import { apiService, showApiError, Stop, TripPlan } from "../services/api";
+import { apiService, Stop, TripPlan } from "../services/api";
 
 const SearchScreen = () => {
   const [fromLocation, setFromLocation] = useState(""); //variable fromLocation default is empty, use setFromLocation to change
@@ -39,11 +39,11 @@ const SearchScreen = () => {
       if (response.success && response.data) {
         setStops(response.data);
       } else {
-        showApiError(response.error || "Failed to load stops");
+        Alert.alert("Error", "Failed to load stops");
       }
     } catch (error) {
       console.error("Error loading stops:", error);
-      showApiError("Failed to load stops");
+      Alert.alert("Error", "Failed to load stops");
     } finally {
       setLoading(false);
     }
@@ -111,11 +111,11 @@ const SearchScreen = () => {
           ]
         );
       } else {
-        showApiError(response.error || "Failed to plan trip");
+        Alert.alert("Error", "Failed to plan trip");
       }
     } catch (error) {
       console.error("Error planning trip:", error);
-      showApiError("Failed to plan trip");
+      Alert.alert("Error", "Failed to plan trip");
     }
   };
 

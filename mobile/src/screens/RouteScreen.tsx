@@ -1,4 +1,8 @@
+// Reminder: If you see a linter error for async-storage, run:
+// npm install @react-native-async-storage/async-storage
 import { Ionicons } from "@expo/vector-icons"; //icons
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -9,19 +13,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-// services
 import ApiRouteCard from "../components/ApiRouteCard";
-import { apiService, Route, showApiError } from "../services/api";
+import { apiService, Route } from "../services/api";
+
+const FAVORITES_KEY = "favorite_routes";
 
 const RouteScreen = () => {
   const [savedRoutes, setSavedRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [favoriteRoutes, setFavoriteRoutes] = useState<string[]>([]);
+  const navigation = useNavigation<any>();
 
-  // Load routes on component mount
   useEffect(() => {
     loadRoutes();
+    loadFavorites();
   }, []);
 
   const loadRoutes = async () => {
@@ -31,14 +37,48 @@ const RouteScreen = () => {
       if (response.success && response.data) {
         setSavedRoutes(response.data);
       } else {
-        showApiError(response.error || "Failed to load routes");
+        console.error(
+          "Error loading routes:",
+          response.error || "Failed to load routes"
+        );
       }
     } catch (error) {
       console.error("Error loading routes:", error);
-      showApiError("Failed to load routes");
+      console.error("Failed to load routes");
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadFavorites = async () => {
+    try {
+      const favs = await AsyncStorage.getItem(FAVORITES_KEY);
+      if (favs) setFavoriteRoutes(JSON.parse(favs));
+    } catch {}
+  };
+
+  const saveFavorites = async (favs: string[]) => {
+    setFavoriteRoutes(favs);
+    await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favs));
+  };
+
+  const toggleFavorite = (routeId: string) => {
+    let favs = [...favoriteRoutes];
+    if (favs.includes(routeId)) {
+      favs = favs.filter((id) => id !== routeId);
+    } else {
+      favs.push(routeId);
+    }
+    saveFavorites(favs);
+  };
+
+  const handleRoutePress = (route: Route) => {
+    // Navigate to RouteMapScreen, passing the routeId
+    navigation.navigate("RouteMap", { routeId: route.id });
+  };
+
+  const handleAddRoute = () => {
+    Alert.alert("Add Route", "Navigate to Search to plan and save new routes!");
   };
 
   const onRefresh = async () => {
@@ -46,33 +86,10 @@ const RouteScreen = () => {
     try {
       await loadRoutes();
     } catch (error) {
-      showApiError("Failed to refresh routes");
+      console.error("Failed to refresh routes");
     } finally {
       setRefreshing(false);
     }
-  };
-
-  //triggered when a user taps a route CARD
-  const handleRoutePress = (route: Route) => {
-    Alert.alert(
-      //shows an alert with some details in it
-      `${route.short_name} Line`,
-      `${route.long_name}\n\nRoute ID: ${route.id}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "View Details", onPress: () => {} },
-      ]
-    );
-  };
-
-  //toggles the isFavorite flag on a route to make it fav
-  const toggleFavorite = (routeId: string) => {
-    // In a real app, this would save to backend/local storage
-    Alert.alert("Favorite", "Favorite functionality coming soon!");
-  };
-
-  const handleAddRoute = () => {
-    Alert.alert("Add Route", "Navigate to Search to plan and save new routes!");
   };
 
   return (
@@ -127,7 +144,7 @@ const RouteScreen = () => {
               route={route}
               onPress={() => handleRoutePress(route)}
               onFavoritePress={() => toggleFavorite(route.id)}
-              isFavorite={false}
+              isFavorite={favoriteRoutes.includes(route.id)}
             />
           ))
         )}
