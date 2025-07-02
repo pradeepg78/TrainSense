@@ -74,7 +74,7 @@ const RouteScreen = () => {
 
   const handleRoutePress = (route: Route) => {
     // Navigate to RouteMapScreen, passing the routeId
-    navigation.navigate("RouteMapScreen", { routeId: route.id });
+    navigation.navigate("RouteMap", { routeId: route.id });
   };
 
   const handleAddRoute = () => {
