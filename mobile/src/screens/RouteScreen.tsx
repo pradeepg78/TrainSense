@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import ApiRouteCard from "../components/ApiRouteCard";
+import { TrainStopsModal } from "../components/TrainStopsModal";
 import { apiService, Route } from "../services/api";
 
 const FAVORITES_KEY = "favorite_routes";
@@ -23,6 +24,8 @@ const RouteScreen = () => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [favoriteRoutes, setFavoriteRoutes] = useState<string[]>([]);
+  const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
   const navigation = useNavigation<any>();
 
   useEffect(() => {
@@ -73,8 +76,9 @@ const RouteScreen = () => {
   };
 
   const handleRoutePress = (route: Route) => {
-    // Navigate to RouteMapScreen, passing the routeId
-    navigation.navigate("RouteMap", { routeId: route.id });
+    // Open TrainStopsModal instead of navigating to RouteMapScreen
+    setSelectedRoute(route);
+    setModalVisible(true);
   };
 
   const handleAddRoute = () => {
@@ -93,12 +97,12 @@ const RouteScreen = () => {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
+    <View style={styles.container}>
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
       {/* Header - bold, modern, with more spacing */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Available Routes</Text>
@@ -176,6 +180,17 @@ const RouteScreen = () => {
       {/* Extra bottom padding for scrollable content */}
       <View style={styles.bottomPadding} />
     </ScrollView>
+
+    {/* TrainStopsModal */}
+    <TrainStopsModal
+      visible={modalVisible}
+      route={selectedRoute}
+      onClose={() => {
+        setModalVisible(false);
+        setSelectedRoute(null);
+      }}
+    />
+    </View>
   );
 };
 
