@@ -37,17 +37,18 @@ export const TrainStopsModal: React.FC<TrainStopsModalProps> = ({
 
   const handleStopPress = async (stop: Stop) => {
     try {
-      // Create a complete stop object with the current route information
+      // Use parent_station if available, otherwise use stop.id
+      const stopId = stop.parent_station || stop.id;
       const completeStop: Stop = {
         ...stop,
-        routes: route ? [route] : [] // Include the current route that we're viewing
+        id: stopId,
+        routes: route ? [route] : []
       };
       setSelectedStop(completeStop);
       setShowStationModal(true);
       console.log("TrainStopsModal: handleStopPress -> completeStop: ", completeStop);
     } catch (error) {
       console.error("Error setting up stop:", error);
-      // Fallback to original stop if there's an error
       setSelectedStop(stop);
       setShowStationModal(true);
     }
