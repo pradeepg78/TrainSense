@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { apiService, Route, Stop } from "../services/api";
+import { StationModal } from "./StationModal";
 import RouteSymbol from "./RouteSymbol";
 
 interface TrainStopsModalProps {
@@ -29,6 +30,28 @@ export const TrainStopsModal: React.FC<TrainStopsModalProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRouteId, setLastRouteId] = useState<string | null>(null);
+
+  // Add functionality to show realtime arrival data for a stop
+  const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
+  const [showStationModal, setShowStationModal] = useState(false);
+
+  const handleStopPress = async (stop: Stop) => {
+    try {
+      // Create a complete stop object with the current route information
+      const completeStop: Stop = {
+        ...stop,
+        routes: route ? [route] : [] // Include the current route that we're viewing
+      };
+      setSelectedStop(completeStop);
+      setShowStationModal(true);
+      console.log("TrainStopsModal: handleStopPress -> completeStop: ", completeStop);
+    } catch (error) {
+      console.error("Error setting up stop:", error);
+      // Fallback to original stop if there's an error
+      setSelectedStop(stop);
+      setShowStationModal(true);
+    }
+  };
 
   const fetchStops = async (isRefresh = false) => {
     if (!route) return;
@@ -140,13 +163,22 @@ export const TrainStopsModal: React.FC<TrainStopsModalProps> = ({
                     <Ionicons name="location" size={16} color="#FFFFFF" />
                   </View>
                   <View style={styles.stopInfo}>
-                    <Text style={styles.stopName}>{stop.name}</Text>
+                    {/* CREATE THE NEW ONPRESS SCREEN */}
+                    <TouchableOpacity onPress={() => handleStopPress(stop)}>
+                        <Text style={styles.stopName}>{stop.name}</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               ))}
             </ScrollView>
           )}
         </View>
+
+        <StationModal
+          visible={showStationModal}
+          station={selectedStop}
+          onClose={() => setShowStationModal(false)}
+        />
       </View>
     </Modal>
   );
@@ -304,9 +336,3 @@ const styles = StyleSheet.create({
     color: "#1A1A1A",
   },
 });
-
-// get train lines data
-// get train stops arrival data
-// when this modal is clicked, it shows a list of every stop that the
-// train line stops at
-
