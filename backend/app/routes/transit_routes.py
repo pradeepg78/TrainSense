@@ -691,6 +691,8 @@ def get_route_stations(route_id):
         trip_stops[trip_id] = [sid for _, sid in trip_stops[trip_id]]
 
     # 5. Find the trip with the most stops (most complete route)
+    if not trip_stops:
+        return jsonify({'success': False, 'error': 'No valid stop sequences found for the provided trip IDs.'})
     longest_trip = max(trip_stops.keys(), key=lambda t: len(trip_stops[t]))
     stop_ids = trip_stops[longest_trip]
 
