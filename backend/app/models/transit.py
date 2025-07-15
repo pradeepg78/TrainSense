@@ -13,6 +13,9 @@ class Route(db.Model):
     route_color = db.Column(db.String(6), default='000000')  # Hex color
     text_color = db.Column(db.String(6), default='FFFFFF')  # Text color
     
+    # Relationship to stops through StopRoute
+    stop_routes = db.relationship('StopRoute', back_populates='route')
+    
     # repr methods are basically a toString() method for when the objects are called
     def __repr__(self):
         return f'<Route {self.short_name}: {self.long_name}>'
@@ -40,6 +43,9 @@ class Stop(db.Model):
     location_type = db.Column(db.Integer, default=0)  # 0=stop, 1=station
     parent_station = db.Column(db.String(20))  # For stops part of larger station
     
+    # Relationship to routes through StopRoute
+    stop_routes = db.relationship('StopRoute', back_populates='stop')
+    
     def __repr__(self):
         return f'<Stop {self.name} ({self.id})>'
     
@@ -54,6 +60,28 @@ class Stop(db.Model):
             'location_type': self.location_type,
             'parent_station': self.parent_station
         }
+    
+    def get_routes(self):
+        """Get all routes that serve this stop"""
+        routes = []
+        for stop_route in self.stop_routes:
+            routes.append(stop_route.route)
+        return routes
+
+class StopRoute(db.Model):
+    """Association table between stops and routes"""
+    __tablename__ = 'stop_routes'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    stop_id = db.Column(db.String(20), db.ForeignKey('stops.id'), nullable=False)
+    route_id = db.Column(db.String(10), db.ForeignKey('routes.id'), nullable=False)
+    
+    # Relationships
+    stop = db.relationship('Stop', back_populates='stop_routes')
+    route = db.relationship('Route', back_populates='stop_routes')
+    
+    def __repr__(self):
+        return f'<StopRoute {self.stop_id} - {self.route_id}>'
 
 class Trip(db.Model):
     """MTA Trip model - represents a specific trip on a route"""

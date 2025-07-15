@@ -1,77 +1,111 @@
+// Reminder: If you see a linter error for async-storage, run:
+// npm install @react-native-async-storage/async-storage
 import { Ionicons } from "@expo/vector-icons"; //icons
-import React, { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import ApiRouteCard from "../components/ApiRouteCard";
+import { TrainStopsModal } from "../components/TrainStopsModal";
+import { apiService, Route } from "../services/api";
+
+const FAVORITES_KEY = "favorite_routes";
 
 const RouteScreen = () => {
-  //savedRoutes is a predefined (for now some bs values) user routes
-  const [savedRoutes, setSavedRoutes] = useState([
-    {
-      id: 1,
-      name: "Home to Work",
-      from: "Brooklyn Heights",
-      to: "Midtown Manhattan",
-      duration: "35 min",
-      steps: [
-        "Walk 5 min to High St-Brooklyn Bridge",
-        "Take 4,5,6 to 14th St-Union Sq",
-        "Transfer to N,Q,R,W",
-        "Take N,Q,R,W to Times Sq-42nd St",
-      ],
-      nextDeparture: "8:15 AM",
-      isFavorite: true,
-    },
-    {
-      id: 2,
-      name: "Weekend Trip",
-      from: "Manhattan",
-      to: "Coney Island",
-      duration: "45 min",
-      steps: ["Take N,Q to Coney Island-Stillwell Av"],
-      nextDeparture: "10:30 AM",
-      isFavorite: false,
-    },
-  ]);
+  const [savedRoutes, setSavedRoutes] = useState<Route[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [favoriteRoutes, setFavoriteRoutes] = useState<string[]>([]);
+  const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const navigation = useNavigation<any>();
 
-  //triggered when a user taps a route CARD
-  const handleRoutePress = (route: any) => {
-    Alert.alert(
-      //shows an alert with some details in it
-      route.name,
-      `${route.from} → ${route.to}\n\nDuration: ${route.duration}\nNext departure: ${route.nextDeparture}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Start Navigation", onPress: () => {} },
-      ]
-    );
+  useEffect(() => {
+    loadRoutes();
+    loadFavorites();
+  }, []);
+
+  const loadRoutes = async () => {
+    setLoading(true);
+    try {
+      const response = await apiService.getRoutes();
+      if (response.success && response.data) {
+        setSavedRoutes(response.data);
+      } else {
+        console.error(
+          "Error loading routes:",
+          response.error || "Failed to load routes"
+        );
+      }
+    } catch (error) {
+      console.error("Error loading routes:", error);
+      console.error("Failed to load routes");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  //toggles the isFavorite flag on a rooute to make it fav
-  const toggleFavorite = (routeId: number) => {
-    setSavedRoutes((routes) =>
-      routes.map((route) =>
-        route.id === routeId
-          ? { ...route, isFavorite: !route.isFavorite }
-          : route
-      )
-    );
+  const loadFavorites = async () => {
+    try {
+      const favs = await AsyncStorage.getItem(FAVORITES_KEY);
+      if (favs) setFavoriteRoutes(JSON.parse(favs));
+    } catch {}
+  };
+
+  const saveFavorites = async (favs: string[]) => {
+    setFavoriteRoutes(favs);
+    await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favs));
+  };
+
+  const toggleFavorite = (routeId: string) => {
+    let favs = [...favoriteRoutes];
+    if (favs.includes(routeId)) {
+      favs = favs.filter((id) => id !== routeId);
+    } else {
+      favs.push(routeId);
+    }
+    saveFavorites(favs);
+  };
+
+  const handleRoutePress = (route: Route) => {
+    // Open TrainStopsModal instead of navigating to RouteMapScreen
+    setSelectedRoute(route);
+    setModalVisible(true);
   };
 
   const handleAddRoute = () => {
     Alert.alert("Add Route", "Navigate to Search to plan and save new routes!");
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadRoutes();
+    } catch (error) {
+      console.error("Failed to refresh routes");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
       {/* Header - bold, modern, with more spacing */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Routes</Text>
+        <Text style={styles.headerTitle}>Available Routes</Text>
         <TouchableOpacity
           style={styles.addButton}
           onPress={handleAddRoute}
@@ -93,72 +127,29 @@ const RouteScreen = () => {
 
       {/* Saved Routes - card-based, with empty state illustration */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Saved Routes</Text>
-        {savedRoutes.length === 0 ? (
+        <Text style={styles.sectionTitle}>Subway Lines</Text>
+        {loading ? (
           <View style={styles.emptyState}>
-            <Ionicons name="map-outline" size={48} color="#B0BEC5" />
-            <Text style={styles.emptyStateText}>No saved routes yet</Text>
+            <Ionicons name="refresh" size={48} color="#B0BEC5" />
+            <Text style={styles.emptyStateText}>Loading routes...</Text>
+          </View>
+        ) : savedRoutes.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="train-outline" size={48} color="#B0BEC5" />
+            <Text style={styles.emptyStateText}>No routes available</Text>
             <Text style={styles.emptyStateSubtext}>
-              Plan a trip to get started
+              Check your connection and try again
             </Text>
           </View>
         ) : (
           savedRoutes.map((route) => (
-            <TouchableOpacity
+            <ApiRouteCard
               key={route.id}
-              style={styles.routeCard}
+              route={route}
               onPress={() => handleRoutePress(route)}
-              activeOpacity={0.85}
-            >
-              {/* Route Header - name, destination, favorite button */}
-              <View style={styles.routeHeader}>
-                <View style={styles.routeInfo}>
-                  <Text style={styles.routeName}>{route.name}</Text>
-                  <Text style={styles.routeDestination}>
-                    {route.from} → {route.to}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => toggleFavorite(route.id)}
-                  style={styles.favoriteButton}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={route.isFavorite ? "heart" : "heart-outline"}
-                    size={24}
-                    color={route.isFavorite ? "#FF6B6B" : "#B0BEC5"}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Route Details - duration, next departure */}
-              <View style={styles.routeDetails}>
-                <View style={styles.routeStat}>
-                  <Ionicons name="time" size={16} color="#2193b0" />
-                  <Text style={styles.routeStatText}>{route.duration}</Text>
-                </View>
-                <View style={styles.routeStat}>
-                  <Ionicons name="train" size={16} color="#2193b0" />
-                  <Text style={styles.routeStatText}>
-                    Next: {route.nextDeparture}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Route Steps - show first 2, then a summary if more */}
-              <View style={styles.routeSteps}>
-                {route.steps.slice(0, 2).map((step, index) => (
-                  <Text key={index} style={styles.stepText}>
-                    {index + 1}. {step}
-                  </Text>
-                ))}
-                {route.steps.length > 2 && (
-                  <Text style={styles.moreSteps}>
-                    +{route.steps.length - 2} more steps
-                  </Text>
-                )}
-              </View>
-            </TouchableOpacity>
+              onFavoritePress={() => toggleFavorite(route.id)}
+              isFavorite={favoriteRoutes.includes(route.id)}
+            />
           ))
         )}
       </View>
@@ -189,6 +180,17 @@ const RouteScreen = () => {
       {/* Extra bottom padding for scrollable content */}
       <View style={styles.bottomPadding} />
     </ScrollView>
+
+    {/* TrainStopsModal */}
+    <TrainStopsModal
+      visible={modalVisible}
+      route={selectedRoute}
+      onClose={() => {
+        setModalVisible(false);
+        setSelectedRoute(null);
+      }}
+    />
+    </View>
   );
 };
 

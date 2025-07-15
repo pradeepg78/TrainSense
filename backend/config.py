@@ -50,6 +50,8 @@ class Config:
     def validate_config():
         """Validate that required config is present"""
         if not Config.MTA_API_KEY:
-            print("WARNING: MTA_API_KEY not found in environment variables")
-            return False
-        return True
+            print("INFO: MTA_API_KEY not found - using public feeds (no API key required)")
+            return True  # API key is now optional
+        else:
+            print("INFO: MTA_API_KEY configured - using authenticated feeds")
+            return True
