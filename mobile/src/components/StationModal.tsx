@@ -20,6 +20,7 @@ interface StationModalProps {
 
 interface ArrivalGroup {
   route: Route;
+  direction: string;
   arrivals: Arrival[];
 }
 
@@ -129,10 +130,13 @@ export const StationModal: React.FC<StationModalProps> = ({
 
     uniqueArrivals.forEach((arrival) => {
       const routeId = arrival.route;
-      if (!groups[routeId]) {
+      const direction = arrival.direction;
+      const groupKey = `${routeId}-${direction}`;
+      
+      if (!groups[groupKey]) {
         // Find the actual route data from station routes
         const actualRoute = station?.routes?.find((r) => r.id === routeId);
-        groups[routeId] = {
+        groups[groupKey] = {
           route: actualRoute || {
             id: routeId,
             short_name: routeId,
@@ -140,15 +144,20 @@ export const StationModal: React.FC<StationModalProps> = ({
             route_color: "000000",
             text_color: "FFFFFF",
           },
+          direction: direction,
           arrivals: [],
         };
       }
-      groups[routeId].arrivals.push(arrival);
+      groups[groupKey].arrivals.push(arrival);
     });
 
-    return Object.values(groups).sort((a, b) =>
-      a.route.short_name.localeCompare(b.route.short_name)
-    );
+    return Object.values(groups).sort((a, b) => {
+      // First sort by route name
+      const routeComparison = a.route.short_name.localeCompare(b.route.short_name);
+      if (routeComparison !== 0) return routeComparison;
+      // Then sort by direction (Northbound first, then Southbound, etc.)
+      return a.direction.localeCompare(b.direction);
+    });
   };
 
   const formatArrivalTime = (minutes: number): string => {
@@ -244,47 +253,42 @@ export const StationModal: React.FC<StationModalProps> = ({
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
               }
             >
-              {sortRoutes(arrivalGroups.map((g) => g.route)).map((route) => {
-                const group = arrivalGroups.find(
-                  (g) => g.route.id === route.id
-                );
-                if (!group) return null;
-                return (
-                  <View key={route.id} style={styles.routeGroup}>
-                    <View style={styles.routeHeader}>
-                      <RouteSymbol routeId={route.short_name} size={28} />
-                    </View>
-
-                    <View style={styles.arrivalsContainer}>
-                      {group.arrivals
-                        .sort((a, b) => a.minutes - b.minutes)
-                        .slice(0, 5)
-                        .map((arrival, index) => (
-                          <View key={index} style={styles.arrivalItem}>
-                            <View style={styles.arrivalTime}>
-                              <Text style={styles.arrivalMinutes}>
-                                {formatArrivalTime(arrival.minutes)}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.arrivalStatus,
-                                  { color: getStatusColor(arrival.status) },
-                                ]}
-                              >
-                                {arrival.status}
-                              </Text>
-                            </View>
-                            <View style={styles.arrivalDetails}>
-                              <Text style={styles.arrivalDirection}>
-                                {arrival.direction}
-                              </Text>
-                            </View>
-                          </View>
-                        ))}
-                    </View>
+              {arrivalGroups.map((group) => (
+                <View key={`${group.route.id}-${group.direction}`} style={styles.routeGroup}>
+                  <View style={styles.routeHeader}>
+                    <RouteSymbol routeId={group.route.short_name} size={28} />
+                    <Text style={styles.directionHeader}>{group.direction}</Text>
                   </View>
-                );
-              })}
+
+                  <View style={styles.arrivalsContainer}>
+                    {group.arrivals
+                      .sort((a, b) => a.minutes - b.minutes)
+                      .slice(0, 5)
+                      .map((arrival, index) => (
+                        <View key={index} style={styles.arrivalItem}>
+                          <View style={styles.arrivalTime}>
+                            <Text style={styles.arrivalMinutes}>
+                              {formatArrivalTime(arrival.minutes)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.arrivalStatus,
+                                { color: getStatusColor(arrival.status) },
+                              ]}
+                            >
+                              {arrival.status}
+                            </Text>
+                          </View>
+                          <View style={styles.arrivalDetails}>
+                            <Text style={[styles.arrivalDirection, { fontSize: 12, opacity: 0.7 }]}>
+                              {arrival.direction}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                  </View>
+                </View>
+              ))}
             </ScrollView>
           )}
         </View>
@@ -462,6 +466,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 12,
+  },
+  directionHeader: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1A1A1A",
+    marginLeft: 12,
   },
   routeName: {
     fontSize: 16,

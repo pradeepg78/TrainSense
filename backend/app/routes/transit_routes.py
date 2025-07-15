@@ -629,48 +629,48 @@ def get_route_shape(route_id):
 @transit_bp.route('/route-stations/<route_id>', methods=['GET'])
 def get_route_stations(route_id):
     """
-    Return the ordered list of consecutive stations (lat/lon) for a route using stop_times.txt and trips.txt.
+    Return the ordered list of consecutive stations for a route using stop_times.txt and trips.txt.
+    Combines stops from all trip patterns for the route to show the complete route.
     """
     gtfs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs')
     trips_file = os.path.join(gtfs_dir, 'trips.txt')
     stop_times_file = os.path.join(gtfs_dir, 'stop_times.txt')
     stops_file = os.path.join(gtfs_dir, 'stops.txt')
 
-    # 1. Find a representative trip_id for this route
-    trip_id = None
+    # 1. Find ALL trip_ids for this route
+    trip_ids = []
     try:
         with open(trips_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 if row['route_id'] == route_id:
-                    trip_id = row['trip_id']
-                    break
+                    trip_ids.append(row['trip_id'])
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error reading trips.txt: {e}'})
 
-    if not trip_id:
-        return jsonify({'success': False, 'error': 'No trip_id found for this route'})
+    if not trip_ids:
+        return jsonify({'success': False, 'error': 'No trip_ids found for this route'})
 
-    # 2. Get the ordered stop_ids for this trip
-    stop_sequence = []
+    # 2. Get all stop sequences for all trips
+    all_stop_sequences = []
     try:
         with open(stop_times_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if row['trip_id'] == trip_id:
-                    stop_sequence.append((int(row['stop_sequence']), row['stop_id']))
-        stop_sequence.sort()
-        stop_ids = [sid for _, sid in stop_sequence]
+                if row['trip_id'] in trip_ids:
+                    all_stop_sequences.append((int(row['stop_sequence']), row['stop_id'], row['trip_id']))
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error reading stop_times.txt: {e}'})
 
-    # 3. Get lat/lon for each stop_id (use parent_station if available)
-    stop_coords = {}
+    # 3. Get full stop information for each stop_id
+    stop_info = {}
     try:
         with open(stops_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                stop_coords[row['stop_id']] = {
+                stop_info[row['stop_id']] = {
+                    'id': row['stop_id'],
+                    'name': row['stop_name'],
                     'latitude': float(row['stop_lat']),
                     'longitude': float(row['stop_lon']),
                     'parent_station': row.get('parent_station') or row['stop_id']
@@ -678,19 +678,38 @@ def get_route_stations(route_id):
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error reading stops.txt: {e}'})
 
-    # 4. Only include unique parent stations in order (to avoid platform duplicates)
+    # 4. Group stops by trip and find the longest/most complete trip pattern
+    trip_stops = {}
+    for seq, stop_id, trip_id in all_stop_sequences:
+        if trip_id not in trip_stops:
+            trip_stops[trip_id] = []
+        trip_stops[trip_id].append((seq, stop_id))
+    
+    # Sort each trip's stops by sequence
+    for trip_id in trip_stops:
+        trip_stops[trip_id].sort()
+        trip_stops[trip_id] = [sid for _, sid in trip_stops[trip_id]]
+
+    # 5. Find the trip with the most stops (most complete route)
+    if not trip_stops:
+        return jsonify({'success': False, 'error': 'No valid stop sequences found for the provided trip IDs.'})
+    longest_trip = max(trip_stops.keys(), key=lambda t: len(trip_stops[t]))
+    stop_ids = trip_stops[longest_trip]
+
+    # 6. Only include unique parent stations in order (to avoid platform duplicates)
     seen = set()
-    ordered_coords = []
+    ordered_stops = []
+    
     for stop_id in stop_ids:
-        info = stop_coords.get(stop_id)
+        info = stop_info.get(stop_id)
         if not info:
             continue
         parent = info['parent_station']
         if parent not in seen:
-            ordered_coords.append({'latitude': info['latitude'], 'longitude': info['longitude']})
+            ordered_stops.append(info)
             seen.add(parent)
 
-    return jsonify({'success': True, 'data': ordered_coords})
+    return jsonify({'success': True, 'data': ordered_stops})
 
 @transit_bp.route('/trunk-shapes', methods=['GET'])
 def get_trunk_shapes():

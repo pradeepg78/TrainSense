@@ -1,4 +1,3 @@
-
 // API Configuration
 const API_BASE_URL = 'http://127.0.0.1:5001/api';
 
@@ -18,6 +17,7 @@ export interface Stop {
   longitude: number;
   routes?: Route[];
   distance_km?: number;
+  parent_station?: string;
 }
 
 export interface Arrival {
