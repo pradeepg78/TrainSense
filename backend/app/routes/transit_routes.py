@@ -394,6 +394,60 @@ def get_map_stations():
             (Stop.location_type == 1) | (Stop.parent_station.isnot(None))
         ).all()
         
+        # Return all individual stations - grouping will be handled on frontend based on zoom level
+        stations = []
+        for stop in stops:
+            stop_data = stop.to_dict()
+            routes = stop.get_routes()
+            
+            # If no routes found for the main stop, check directional stops
+            if not routes:
+                directional_stops = Stop.query.filter(
+                    (Stop.id == stop.id + 'N') | (Stop.id == stop.id + 'S')
+                ).all()
+                
+                for dir_stop in directional_stops:
+                    dir_routes = dir_stop.get_routes()
+                    for route in dir_routes:
+                        if not any(r.id == route.id for r in routes):
+                            routes.append(route)
+            
+            stop_data['routes'] = [route.to_dict() for route in routes]
+            
+            # Assign hub_id
+            sid = stop.id
+            hub_id = stop_to_hub.get(sid)
+            if not hub_id:
+                parent = stop.parent_station
+                if parent:
+                    hub_id = stop_to_hub.get(parent)
+            if not hub_id:
+                hub_id = f"hub_{sid}"
+            stop_data['hub_id'] = hub_id
+            stations.append(stop_data)
+        
+
+        
+        return jsonify({
+            'success': True,
+            'data': stations
+        })
+    except Exception as e:
+        logger.error(f"Error fetching map stations: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to fetch map stations'
+        }), 500
+
+@transit_bp.route('/map/stations-combined', methods=['GET'])
+def get_combined_stations():
+    """Get all stations combined by physical location with all routes"""
+    try:
+        # Get all stops that are stations or have parent stations
+        stops = Stop.query.filter(
+            (Stop.location_type == 1) | (Stop.parent_station.isnot(None))
+        ).all()
+        
         # Group by parent station to avoid duplicates
         station_dict = {}
         for stop in stops:
@@ -401,10 +455,106 @@ def get_map_stations():
             if station_id not in station_dict:
                 station_dict[station_id] = stop
         
-        # Convert to list and add route information
-        stations = []
+        # Create a mapping of station names to combine similar stations
+        # This is a simplified approach - in production you'd use a more sophisticated algorithm
+        station_name_mapping = {
+            # 42nd Street stations
+            '42 St - Grand Central': ['42 St - Grand Central', 'Grand Central - 42 St'],
+            '42 St - Times Square': ['42 St - Times Square', 'Times Square - 42 St'],
+            '42 St - Bryant Park': ['42 St - Bryant Park', 'Bryant Park - 42 St'],
+            
+            # 14th Street stations
+            '14 St - Union Square': ['14 St - Union Square', 'Union Square - 14 St'],
+            '14 St - 6 Av': ['14 St - 6 Av', '6 Av - 14 St'],
+            '14 St - 8 Av': ['14 St - 8 Av', '8 Av - 14 St'],
+            
+            # 34th Street stations
+            '34 St - Herald Square': ['34 St - Herald Square', 'Herald Square - 34 St'],
+            '34 St - Penn Station': ['34 St - Penn Station', 'Penn Station - 34 St'],
+            
+            # 23rd Street stations
+            '23 St': ['23 St', '23rd St'],
+            
+            # 28th Street stations
+            '28 St': ['28 St', '28th St'],
+            
+            # 33rd Street stations
+            '33 St': ['33 St', '33rd St'],
+            
+            # 50th Street stations
+            '50 St': ['50 St', '50th St'],
+            
+            # 59th Street stations
+            '59 St - Columbus Circle': ['59 St - Columbus Circle', 'Columbus Circle - 59 St'],
+            '59 St - Lexington Av': ['59 St - Lexington Av', 'Lexington Av - 59 St'],
+            
+            # 72nd Street stations
+            '72 St': ['72 St', '72nd St'],
+            
+            # 86th Street stations
+            '86 St': ['86 St', '86th St'],
+            
+            # 96th Street stations
+            '96 St': ['96 St', '96th St'],
+            
+            # 110th Street stations
+            '110 St': ['110 St', '110th St'],
+            
+            # 116th Street stations
+            '116 St': ['116 St', '116th St'],
+            
+            # 125th Street stations
+            '125 St': ['125 St', '125th St'],
+            
+            # 135th Street stations
+            '135 St': ['135 St', '135th St'],
+            
+            # 145th Street stations
+            '145 St': ['145 St', '145th St'],
+            
+            # 155th Street stations
+            '155 St': ['155 St', '155th St'],
+            
+            # 168th Street stations
+            '168 St': ['168 St', '168th St'],
+            
+            # 181st Street stations
+            '181 St': ['181 St', '181st St'],
+            
+            # 191st Street stations
+            '191 St': ['191 St', '191st St'],
+            
+            # 207th Street stations
+            '207 St': ['207 St', '207th St'],
+            
+            # 215th Street stations
+            '215 St': ['215 St', '215th St'],
+            
+            # 225th Street stations
+            '225 St': ['225 St', '225th St'],
+            
+            # 231st Street stations
+            '231 St': ['231 St', '231st St'],
+            
+            # 238th Street stations
+            '238 St': ['238 St', '238th St'],
+            
+            # 242nd Street stations
+            '242 St': ['242 St', '242nd St'],
+        }
+        
+        # Create reverse mapping for quick lookup
+        name_to_canonical = {}
+        for canonical_name, variations in station_name_mapping.items():
+            for variation in variations:
+                name_to_canonical[variation] = canonical_name
+        
+        # Group stations by canonical name
+        combined_stations = {}
+        
         for stop in station_dict.values():
             stop_data = stop.to_dict()
+            
             # Get routes that serve this stop
             routes = stop.get_routes()
             
@@ -421,30 +571,46 @@ def get_map_stations():
                         # Check if route already added
                         if not any(r.id == route.id for r in routes):
                             routes.append(route)
-            stop_data['routes'] = [route.to_dict() for route in routes]
-            # Assign hub_id: use stop.id or parent_station, then map to hub_id
-            sid = stop.id
-            hub_id = stop_to_hub.get(sid)
-            if not hub_id:
-                # Try parent_station
-                parent = stop.parent_station
-                if parent:
-                    hub_id = stop_to_hub.get(parent)
-            if not hub_id:
-                # Not in any group, assign unique
-                hub_id = f"hub_{sid}"
-            stop_data['hub_id'] = hub_id
-            stations.append(stop_data)
+            
+            # Determine canonical name
+            station_name = stop_data['name']
+            canonical_name = name_to_canonical.get(station_name, station_name)
+            
+            if canonical_name not in combined_stations:
+                # Initialize new combined station
+                combined_stations[canonical_name] = {
+                    'id': stop_data['id'],
+                    'name': canonical_name,
+                    'latitude': stop_data['latitude'],
+                    'longitude': stop_data['longitude'],
+                    'routes': [],
+                    'all_stop_ids': [],
+                    'hub_id': f"hub_{canonical_name.replace(' ', '_').replace('-', '_')}"
+                }
+            
+            # Add this stop's routes to the combined station
+            for route in routes:
+                route_dict = route.to_dict()
+                # Check if route already exists
+                if not any(r['id'] == route_dict['id'] for r in combined_stations[canonical_name]['routes']):
+                    combined_stations[canonical_name]['routes'].append(route_dict)
+            
+            # Add stop ID to the list
+            if stop_data['id'] not in combined_stations[canonical_name]['all_stop_ids']:
+                combined_stations[canonical_name]['all_stop_ids'].append(stop_data['id'])
+        
+        # Convert to list
+        stations = list(combined_stations.values())
         
         return jsonify({
             'success': True,
             'data': stations
         })
     except Exception as e:
-        logger.error(f"Error fetching map stations: {e}")
+        logger.error(f"Error fetching combined stations: {e}")
         return jsonify({
             'success': False,
-            'error': 'Failed to fetch map stations'
+            'error': 'Failed to fetch combined stations'
         }), 500
 
 @transit_bp.route('/realtime/health', methods=['GET'])

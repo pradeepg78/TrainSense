@@ -1,8 +1,8 @@
 # backend/app/__init__.py
 from flask import Flask # Main Frame Webwork Class
 from flask_cors import CORS # Allows mobile app to make requests to the API
-from flask_sqlalchemy import SQLAlchemy # Database Objext Relational Mapping
-from flask_migrate import Migrate # Database Schemma Versioning
+from flask_sqlalchemy import SQLAlchemy # Database Object Relational Mapping
+from flask_migrate import Migrate # Database Schema Versioning
 from config import Config
 
 # Initialize extensions
@@ -31,9 +31,11 @@ def create_app(config_class=Config):
     # Allow requests from other domains
     CORS(app)
     
-    # Register API routes
-    from app.routes import init_app as init_routes
-    init_routes(app)
+    # Import and register blueprints (ADD THIS SECTION)
+    from app.routes.crowd_routes import crowd_bp
+    from app.routes.transit_routes import transit_bp
+    app.register_blueprint(crowd_bp)
+    app.register_blueprint(transit_bp, url_prefix='/api/v1')
     
     # Add a simple health check route
     @app.route('/')
@@ -41,7 +43,12 @@ def create_app(config_class=Config):
         return {
             'status': 'healthy',
             'message': 'MTA Transit Companion API is running!',
-            'version': '1.0.0'
+            'version': '1.0.0',
+            'endpoints': [
+                '/api/crowd/status',
+                '/api/crowd/station/<station_id>',
+                '/api/crowd/nearby'
+            ]
         }
     
     return app
