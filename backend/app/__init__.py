@@ -35,6 +35,10 @@ def create_app(config_class=Config):
     from app.routes import init_app as init_routes
     init_routes(app)
     
+    # Register crowd prediction routes
+    from app.routes.crowd_prediction import crowd_bp
+    app.register_blueprint(crowd_bp)
+    
     # Add a simple health check route
     @app.route('/')
     def health_check():

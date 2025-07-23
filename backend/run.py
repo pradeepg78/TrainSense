@@ -1,7 +1,8 @@
-# backend/run.py
 # Entry point for flask application
 from app import create_app, db
 from config import Config
+# import ML model
+from app.models.crowd_prediction import CrowdDataPoint, CrowdPrediction
 
 # Import models so they're registered with SQLAlchemy
 from app.models.transit import Route, Stop, Trip
@@ -9,7 +10,7 @@ from app.models.transit import Route, Stop, Trip
 # Create Flask app
 app = create_app()
 
-# Preload the configuration for flask shell
+# Preload the configuration for flask shell    
 @app.shell_context_processor
 def make_shell_context():
     """Make database models available in Flask shell"""
@@ -18,6 +19,8 @@ def make_shell_context():
         'Route': Route, 
         'Stop': Stop, 
         'Trip': Trip,
+        'CrowdDataPoint': CrowdDataPoint,     
+        'CrowdPrediction': CrowdPrediction,   
         'Config': Config
     }
 

@@ -35,20 +35,43 @@ class MTACrowdService:
             '125 St': ['125 ST', '125TH STREET'],
         }
     
+    def get_latest_available_date(self):
+        """
+        Fetch the latest available transit_timestamp from the API.
+        Returns a datetime object for the most recent record.
+        """
+        params = {
+            '$limit': 1,
+            '$order': 'transit_timestamp DESC'
+        }
+        try:
+            response = requests.get(self.mta_hourly_api, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if data and 'transit_timestamp' in data[0]:
+                # Remove 'Z' if present and parse
+                return datetime.fromisoformat(data[0]['transit_timestamp'].replace('Z', ''))
+            else:
+                raise Exception("No data found in API response.")
+        except Exception as e:
+            print(f"  ❌ Failed to fetch latest available date: {e}")
+            # Fallback: use today
+            return datetime.now()
+    
     def download_recent_hourly_data(self, max_records=2000):
         """
         Download MTA hourly ridership data
         """
-        print(f"backend/app/services/mta_crowd_service.py: Downloading MTA hourly ridership data (Last updated 5/14/25 as checked on 7/22/25)...")
-        
-        # Calculate date range - go back to when data was actually available
-        end_date = datetime(2025, 5, 14)  # Last known update date
-        start_date = end_date - timedelta(days=30)  # Get 30 days of data from that period
-        
+        print("backend/app/services/mta_crowd_service.py: Downloading MTA hourly ridership data (using latest available date)...")
+
+        # Dynamically get the latest available date
+        end_date = self.get_latest_available_date()
+        start_date = end_date - timedelta(days=30)
+
         # Format dates for API (ISO format)
         start_str = start_date.strftime("%Y-%m-%dT00:00:00.000")
         end_str = end_date.strftime("%Y-%m-%dT23:59:59.999")
-        
+
         try:
             # Build API query with correct SoQL syntax
             params = {
@@ -56,22 +79,22 @@ class MTACrowdService:
                 '$where': f"transit_timestamp >= '{start_str}' AND transit_timestamp <= '{end_str}'",
                 '$order': 'transit_timestamp DESC'
             }
-            
+
             print(f"API URL: {self.mta_hourly_api}")
             print(f"Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-            
+
             response = requests.get(self.mta_hourly_api, params=params, timeout=30)
             response.raise_for_status()
-            
+
             data = response.json()
-            
+
             # Check if we got an error response
             if isinstance(data, dict) and data.get('error'):
                 print(f"  ❌ API Error: {data.get('message', 'Unknown error')}")
                 return []
-            
+
             print(f"  ✅ Downloaded {len(data)} hourly ridership records")
-            
+
             # Show sample of what we got
             if data:
                 sample = data[0]
@@ -80,9 +103,9 @@ class MTACrowdService:
                     print(f"  🚇 Sample station: {sample.get('station_complex', 'N/A')}")
                 if 'ridership' in sample:
                     print(f"  👥 Sample ridership: {sample.get('ridership', 'N/A')}")
-            
+
             return data
-            
+
         except requests.exceptions.RequestException as e:
             print(f"  ❌ API request failed: {e}")
             return []
@@ -316,7 +339,7 @@ class MTACrowdService:
             print(f"  ❌ Error committing: {e}")
             return 0
     
-    def update_crowd_data(self, days_back=7):
+    def update_crowd_data(self, max_records=2000):
         """
         Main method: Update crowd data using the NEW MTA hourly API
         This actually works unlike the broken turnstile approach!
@@ -324,7 +347,7 @@ class MTACrowdService:
         print("🚇 MTA crowd data update (using NEW hourly ridership API)...")
         
         # Download hourly ridership data
-        hourly_data = self.download_recent_hourly_data(days_back=days_back)
+        hourly_data = self.download_recent_hourly_data(max_records=2000)
         
         if hourly_data:
             # Convert to crowd estimates
