@@ -5,7 +5,7 @@ Machine learning service for crowd prediction
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import joblib
@@ -119,13 +119,12 @@ class CrowdPredictionService:
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
         
-        # Train model
-        self.model = RandomForestRegressor(
+        # Train classifier instead of regressor
+        self.model = RandomForestClassifier(
             n_estimators=100,
             max_depth=10,
             random_state=42
         )
-        
         self.model.fit(X_train_scaled, y_train)
         
         # Evaluate
@@ -139,7 +138,7 @@ class CrowdPredictionService:
         return True
     
     def predict_crowd_level(self, station_id, route_id, target_datetime):
-        """Predict crowd level for specific station, route, and time"""
+        """Predict crowd level for specific station, route, and time using real features and classifier"""
         # Load model if needed
         if not self.model:
             try:
@@ -157,9 +156,41 @@ class CrowdPredictionService:
         is_evening = 1 if 17 <= hour <= 21 else 0
         is_late_night = 1 if hour >= 22 or hour <= 5 else 0
         
-        # Default values (would be better with historical lookup)
-        traffic_level = 2
-        station_popularity = 50
+        # Use historical averages for traffic_level and station_popularity
+        # Query the DB for recent net_traffic for this station/route/hour
+        recent_points = db.session.query(CrowdDataPoint).filter_by(
+            station_id=station_id, route_id=route_id, hour_of_day=hour
+        ).all()
+        if recent_points:
+            avg_traffic = np.mean([p.net_traffic or 0 for p in recent_points])
+            # Use same binning as in engineer_features
+            if avg_traffic <= 500:
+                traffic_level = 1
+            elif avg_traffic <= 1500:
+                traffic_level = 2
+            elif avg_traffic <= 3000:
+                traffic_level = 3
+            else:
+                traffic_level = 4
+            station_popularity = len(recent_points)
+        else:
+            # Fallback to global average
+            all_points = db.session.query(CrowdDataPoint).filter_by(station_id=station_id).all()
+            if all_points:
+                avg_traffic = np.mean([p.net_traffic or 0 for p in all_points])
+                if avg_traffic <= 500:
+                    traffic_level = 1
+                elif avg_traffic <= 1500:
+                    traffic_level = 2
+                elif avg_traffic <= 3000:
+                    traffic_level = 3
+                else:
+                    traffic_level = 4
+                station_popularity = len(all_points)
+            else:
+                # Absolute fallback
+                traffic_level = 2
+                station_popularity = 50
         
         # Create feature array
         features = np.array([[
@@ -170,11 +201,14 @@ class CrowdPredictionService:
         
         # Predict
         features_scaled = self.scaler.transform(features)
-        prediction = self.model.predict(features_scaled)[0]
-        crowd_level = max(1, min(4, round(prediction)))
+        pred_class = self.model.predict(features_scaled)[0]
+        proba = self.model.predict_proba(features_scaled)[0]
+        # Get confidence for predicted class
+        class_index = list(self.model.classes_).index(pred_class)
+        confidence = float(proba[class_index])
         
         return {
-            'predicted_crowd_level': crowd_level,
-            'confidence_score': 0.8,
+            'predicted_crowd_level': int(pred_class),
+            'confidence_score': confidence,
             'target_time': target_datetime.isoformat()
         }

@@ -42,6 +42,10 @@ def main():
                 print("\n⚠️  Model training failed. Check data quality.")
         else:
             print("\n❌ No NEW MTA data downloaded.")
+            print("\nNext steps:")
+            print("1. Start app: python3 run.py")
+            print("2. Test: curl -X GET http://localhost:5001/api/crowd/predict/6")
+            print("3. Check status: curl -X GET http://localhost:5001/api/crowd/status")
 
 if __name__ == '__main__':
     main()

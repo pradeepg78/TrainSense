@@ -58,6 +58,28 @@ class MTACrowdService:
             # Fallback: use today
             return datetime.now()
     
+    def get_earliest_available_date(self):
+        """
+        Fetch the earliest available transit_timestamp from the API.
+        Returns a datetime object for the earliest record.
+        """
+        params = {
+            '$limit': 1,
+            '$order': 'transit_timestamp ASC'
+        }
+        try:
+            response = requests.get(self.mta_hourly_api, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if data and 'transit_timestamp' in data[0]:
+                return datetime.fromisoformat(data[0]['transit_timestamp'].replace('Z', ''))
+            else:
+                raise Exception("No data found in API response.")
+        except Exception as e:
+            print(f"  ❌ Failed to fetch earliest available date: {e}")
+            # Fallback: use 1 year ago
+            return datetime.now() - timedelta(days=365)
+
     def download_recent_hourly_data(self, max_records=2000):
         """
         Download MTA hourly ridership data
@@ -112,6 +134,58 @@ class MTACrowdService:
         except Exception as e:
             print(f"  ❌ Error processing data: {e}")
             return []
+
+    def download_all_hourly_data_by_month(self, max_records=2000):
+        """
+        Download all available MTA hourly ridership data, month by month.
+        """
+        print("backend/app/services/mta_crowd_service.py: Downloading ALL MTA hourly ridership data (batch by month)...")
+
+        # Get earliest and latest available dates
+        start_date = self.get_earliest_available_date()
+        end_date = self.get_latest_available_date()
+
+        print(f"  Earliest date: {start_date.strftime('%Y-%m-%d')}")
+        print(f"  Latest date:   {end_date.strftime('%Y-%m-%d')}")
+
+        all_data = []
+        current = datetime(start_date.year, start_date.month, 1)
+        last = datetime(end_date.year, end_date.month, 1)
+        month_count = 0
+        while current <= last:
+            # Calculate month start and end
+            month_start = current
+            if current.month == 12:
+                month_end = datetime(current.year + 1, 1, 1) - timedelta(days=1)
+            else:
+                month_end = datetime(current.year, current.month + 1, 1) - timedelta(days=1)
+            # Don't go past the true end_date
+            if month_end > end_date:
+                month_end = end_date
+            start_str = month_start.strftime("%Y-%m-%dT00:00:00.000")
+            end_str = month_end.strftime("%Y-%m-%dT23:59:59.999")
+            params = {
+                '$limit': max_records,
+                '$where': f"transit_timestamp >= '{start_str}' AND transit_timestamp <= '{end_str}'",
+                '$order': 'transit_timestamp DESC'
+            }
+            print(f"  📅 Fetching {month_start.strftime('%Y-%m')} ({start_str} to {end_str})...")
+            try:
+                response = requests.get(self.mta_hourly_api, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                print(f"    ✅ Downloaded {len(data)} records for {month_start.strftime('%Y-%m')}")
+                all_data.extend(data)
+            except Exception as e:
+                print(f"    ❌ Failed to fetch data for {month_start.strftime('%Y-%m')}: {e}")
+            # Move to next month
+            if current.month == 12:
+                current = datetime(current.year + 1, 1, 1)
+            else:
+                current = datetime(current.year, current.month + 1, 1)
+            month_count += 1
+        print(f"  📦 Total records downloaded: {len(all_data)} from {month_count} months.")
+        return all_data
     
     def process_hourly_to_crowds(self, hourly_data):
         """
@@ -345,17 +419,17 @@ class MTACrowdService:
         This actually works unlike the broken turnstile approach!
         """
         print("🚇 MTA crowd data update (using NEW hourly ridership API)...")
-        
-        # Download hourly ridership data
-        hourly_data = self.download_recent_hourly_data(max_records=2000)
-        
+
+        # Download all hourly ridership data by month
+        hourly_data = self.download_all_hourly_data_by_month(max_records=max_records)
+
         if hourly_data:
             # Convert to crowd estimates
             crowd_points = self.process_hourly_to_crowds(hourly_data)
-            
+
             # Save to database
             saved_count = self.save_crowd_data(crowd_points)
-            
+
             print(f"✅ Update complete: {saved_count} new data points")
             print(f"📊 Data source: MTA Official Hourly Ridership API")
             return saved_count
