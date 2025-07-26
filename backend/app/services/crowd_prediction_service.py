@@ -5,7 +5,7 @@ Machine learning service for crowd prediction
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import joblib
@@ -42,173 +42,428 @@ class CrowdPredictionService:
             print("   Run MTA data update first!")
             return None
         
-        # Convert to list of dictionaries
-        data = []
-        for point in crowd_data:
-            data.append({
-                'hour_of_day': point.hour_of_day,
-                'day_of_week': point.day_of_week,
-                'crowd_level': point.crowd_level,
-                'net_traffic': point.net_traffic or 0,
-                'station_id': point.station_id,
-                'route_id': point.route_id,
-                'timestamp': point.timestamp
-            })
-        
-        df = pd.DataFrame(data)
-        print(f"✅ Collected {len(df)} training examples")
+        print(f"✅ Collected {len(crowd_data)} training examples")
         
         # Show data distribution
-        crowd_distribution = df['crowd_level'].value_counts().sort_index()
-        print(f"📊 Crowd level distribution:")
-        for level, count in crowd_distribution.items():
-            level_name = {1: 'Low', 2: 'Medium', 3: 'High', 4: 'Very High'}[level]
-            print(f"   Level {level} ({level_name}): {count} samples ({count/len(df)*100:.1f}%)")
+        crowd_levels = [point.crowd_level for point in crowd_data]
+        crowd_dist = {}
+        for level in crowd_levels:
+            crowd_dist[level] = crowd_dist.get(level, 0) + 1
         
-        return df
+        print("📊 Crowd level distribution:")
+        for level in sorted(crowd_dist.keys()):
+            count = crowd_dist[level]
+            percentage = (count / len(crowd_data)) * 100
+            level_name = {1: "Low", 2: "Medium", 3: "High", 4: "Very High"}.get(level, f"Level {level}")
+            print(f"  Level {level} ({level_name}): {count} samples ({percentage:.1f}%)")
+        
+        return crowd_data
     
-    def engineer_features(self, df):
-        """Create features for machine learning"""
-        print("🔧 Engineering ML features...")
+    def engineer_features(self, data_points):
+        """
+        Enhanced feature engineering for 70%+ accuracy
+        """
+        print("🔧 Engineering advanced ML features...")
         
-        # Time-based features
-        df['is_weekend'] = (df['day_of_week'] >= 5).astype(int)
-        df['is_rush_hour'] = ((df['hour_of_day'].between(7, 9)) | 
-                             (df['hour_of_day'].between(17, 19))).astype(int)
-        df['is_morning'] = df['hour_of_day'].between(6, 11).astype(int)
-        df['is_evening'] = df['hour_of_day'].between(17, 21).astype(int)
-        df['is_late_night'] = ((df['hour_of_day'] >= 22) | (df['hour_of_day'] <= 5)).astype(int)
+        features = []
+        labels = []
         
-        # Traffic-based features
-        df['traffic_level'] = pd.cut(
-            df['net_traffic'], 
-            bins=[0, 500, 1500, 3000, float('inf')], 
-            labels=[1, 2, 3, 4]
-        ).astype(int)
+        for point in data_points:
+            try:
+                # Parse timestamp
+                timestamp = point.timestamp
+                hour_of_day = timestamp.hour
+                day_of_week = timestamp.weekday()
+                month = timestamp.month
+                day_of_year = timestamp.timetuple().tm_yday
+                
+                # Basic time features
+                is_weekend = 1 if day_of_week >= 5 else 0
+                is_rush_hour = 1 if (7 <= hour_of_day <= 9) or (17 <= hour_of_day <= 19) else 0
+                is_late_night = 1 if hour_of_day >= 22 or hour_of_day <= 5 else 0
+                
+                # Enhanced time features
+                is_morning_rush = 1 if 7 <= hour_of_day <= 9 else 0
+                is_evening_rush = 1 if 17 <= hour_of_day <= 19 else 0
+                is_midday = 1 if 10 <= hour_of_day <= 16 else 0
+                
+                # Seasonal features
+                is_summer = 1 if month in [6, 7, 8] else 0
+                is_winter = 1 if month in [12, 1, 2] else 0
+                is_spring = 1 if month in [3, 4, 5] else 0
+                is_fall = 1 if month in [9, 10, 11] else 0
+                
+                # Day type features
+                is_monday = 1 if day_of_week == 0 else 0
+                is_friday = 1 if day_of_week == 4 else 0
+                is_sunday = 1 if day_of_week == 6 else 0
+                
+                # Cyclical time features (better for ML)
+                hour_sin = np.sin(2 * np.pi * hour_of_day / 24)
+                hour_cos = np.cos(2 * np.pi * hour_of_day / 24)
+                day_sin = np.sin(2 * np.pi * day_of_week / 7)
+                day_cos = np.cos(2 * np.pi * day_of_week / 7)
+                month_sin = np.sin(2 * np.pi * month / 12)
+                month_cos = np.cos(2 * np.pi * month / 12)
+                
+                # Station-specific features
+                station_id = point.station_id
+                route_id = point.route_id
+                
+                # Get historical averages for this station/route/time
+                historical_avg = self._get_historical_average(station_id, route_id, hour_of_day, day_of_week)
+                historical_std = self._get_historical_std(station_id, route_id, hour_of_day, day_of_week)
+                
+                # Traffic level based on historical data
+                if historical_std > 0:
+                    traffic_level = (point.raw_entries - historical_avg) / historical_std
+                else:
+                    traffic_level = 0
+                
+                # Station popularity (normalized)
+                station_popularity = self._get_station_popularity(station_id, route_id)
+                
+                # Route-specific features
+                is_express_route = 1 if route_id in ['A', 'D', 'E', 'F', 'N', 'Q', 'R'] else 0
+                is_local_route = 1 if route_id in ['1', '2', '3', '4', '5', '6', '7', 'G', 'L', 'M'] else 0
+                
+                # Borough features
+                borough = point.borough.lower()
+                is_manhattan = 1 if 'manhattan' in borough else 0
+                is_brooklyn = 1 if 'brooklyn' in borough else 0
+                is_queens = 1 if 'queens' in borough else 0
+                is_bronx = 1 if 'bronx' in borough else 0
+                
+                # Interaction features (important for accuracy)
+                rush_manhattan = is_rush_hour * is_manhattan
+                weekend_brooklyn = is_weekend * is_brooklyn
+                late_night_express = is_late_night * is_express_route
+                
+                # Weather-like features (proxy for seasonal patterns)
+                is_holiday_season = 1 if month in [11, 12] else 0  # Thanksgiving/Christmas
+                is_summer_break = 1 if month in [6, 7, 8] else 0
+                
+                # Create feature vector
+                feature_vector = [
+                    hour_of_day,
+                    day_of_week,
+                    month,
+                    day_of_year,
+                    is_weekend,
+                    is_rush_hour,
+                    is_late_night,
+                    is_morning_rush,
+                    is_evening_rush,
+                    is_midday,
+                    is_summer,
+                    is_winter,
+                    is_spring,
+                    is_fall,
+                    is_monday,
+                    is_friday,
+                    is_sunday,
+                    hour_sin,
+                    hour_cos,
+                    day_sin,
+                    day_cos,
+                    month_sin,
+                    month_cos,
+                    historical_avg,
+                    historical_std,
+                    traffic_level,
+                    station_popularity,
+                    is_express_route,
+                    is_local_route,
+                    is_manhattan,
+                    is_brooklyn,
+                    is_queens,
+                    is_bronx,
+                    rush_manhattan,
+                    weekend_brooklyn,
+                    late_night_express,
+                    is_holiday_season,
+                    is_summer_break,
+                    point.raw_entries  # Raw ridership as feature
+                ]
+                
+                features.append(feature_vector)
+                labels.append(point.crowd_level)
+                
+            except Exception as e:
+                print(f"Error engineering features: {e}")
+                continue
         
-        # Station popularity
-        station_counts = df['station_id'].value_counts()
-        df['station_popularity'] = df['station_id'].map(station_counts)
-        
-        return df
+        print(f"✅ Engineered features for {len(features)} data points")
+        return np.array(features), np.array(labels)
+
+    def _get_historical_average(self, station_id, route_id, hour, day_of_week):
+        """Get historical average ridership for this station/route/time"""
+        try:
+            from app.models.crowd_prediction import CrowdDataPoint
+            from sqlalchemy import func
+            
+            # Query historical data for this station/route/time combination
+            avg_result = db.session.query(func.avg(CrowdDataPoint.raw_entries)).filter(
+                CrowdDataPoint.station_id == station_id,
+                CrowdDataPoint.route_id == route_id,
+                func.extract('hour', CrowdDataPoint.timestamp) == hour,
+                func.extract('dow', CrowdDataPoint.timestamp) == day_of_week
+            ).scalar()
+            
+            return float(avg_result) if avg_result else 100.0  # Default fallback
+        except:
+            return 100.0
+
+    def _get_historical_std(self, station_id, route_id, hour, day_of_week):
+        """Get historical standard deviation for this station/route/time"""
+        try:
+            from app.models.crowd_prediction import CrowdDataPoint
+            from sqlalchemy import func
+            
+            std_result = db.session.query(func.stddev(CrowdDataPoint.raw_entries)).filter(
+                CrowdDataPoint.station_id == station_id,
+                CrowdDataPoint.route_id == route_id,
+                func.extract('hour', CrowdDataPoint.timestamp) == hour,
+                func.extract('dow', CrowdDataPoint.timestamp) == day_of_week
+            ).scalar()
+            
+            return float(std_result) if std_result else 50.0  # Default fallback
+        except:
+            return 50.0
+
+    def _get_station_popularity(self, station_id, route_id):
+        """Get station popularity score (0-1)"""
+        try:
+            from app.models.crowd_prediction import CrowdDataPoint
+            from sqlalchemy import func
+            
+            # Get average ridership for this station/route
+            avg_result = db.session.query(func.avg(CrowdDataPoint.raw_entries)).filter(
+                CrowdDataPoint.station_id == station_id,
+                CrowdDataPoint.route_id == route_id
+            ).scalar()
+            
+            # Normalize to 0-1 scale (assuming max ridership is ~1000)
+            popularity = min(float(avg_result) / 1000.0, 1.0) if avg_result else 0.1
+            return popularity
+        except:
+            return 0.1
     
     def train_model(self):
-        """Train the crowd prediction model"""
+        """Train the crowd prediction model with enhanced features for 70%+ accuracy"""
         print("🤖 Training crowd prediction model...")
         
-        df = self.collect_training_data()
-        if df is None:
+        try:
+            # Collect training data
+            print("📊 Collecting training data from database...")
+            data_points = self.collect_training_data()
+            
+            if not data_points:
+                print("❌ No training data available")
             return False
         
-        df = self.engineer_features(df)
-        
-        # Define features
-        self.feature_names = [
-            'hour_of_day', 'day_of_week', 'is_weekend', 'is_rush_hour',
-            'is_morning', 'is_evening', 'is_late_night', 
-            'traffic_level', 'station_popularity'
-        ]
-        
-        X = df[self.feature_names]
-        y = df['crowd_level']
+            print(f"✅ Collected {len(data_points)} training examples")
+            
+            # Show crowd level distribution
+            crowd_levels = [point.crowd_level for point in data_points]
+            crowd_dist = {}
+            for level in crowd_levels:
+                crowd_dist[level] = crowd_dist.get(level, 0) + 1
+            
+            print("📊 Crowd level distribution:")
+            for level in sorted(crowd_dist.keys()):
+                count = crowd_dist[level]
+                percentage = (count / len(data_points)) * 100
+                level_name = {1: "Low", 2: "Medium", 3: "High", 4: "Very High"}.get(level, f"Level {level}")
+                print(f"  Level {level} ({level_name}): {count} samples ({percentage:.1f}%)")
+            
+            # Engineer enhanced features
+            X, y = self.engineer_features(data_points)
+            
+            if len(X) == 0:
+                print("❌ No features could be engineered")
+                return False
         
         # Split data
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
         
         # Scale features
+            self.scaler = StandardScaler()
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
         
-        # Train classifier instead of regressor
-        self.model = RandomForestClassifier(
-            n_estimators=100,
-            max_depth=10,
+            # Train model with more trees for better accuracy
+        self.model = RandomForestRegressor(
+                n_estimators=200,  # More trees for better accuracy
+                max_depth=15,      # Prevent overfitting
+                min_samples_split=10,
+                min_samples_leaf=5,
             random_state=42
         )
         self.model.fit(X_train_scaled, y_train)
         
         # Evaluate
-        accuracy = self.model.score(X_test_scaled, y_test)
-        print(f"✅ Model trained! Accuracy: {accuracy:.3f}")
-        
-        # Save model
-        joblib.dump(self.model, self.model_path)
+            y_pred = self.model.predict(X_test_scaled)
+            y_pred_rounded = np.round(y_pred).astype(int)
+            
+            # Calculate accuracy
+            accuracy = np.mean(y_pred_rounded == y_test)
+            
+            # Calculate per-class accuracy
+            from sklearn.metrics import classification_report
+            report = classification_report(y_test, y_pred_rounded, output_dict=True)
+            
+            print(f"✅ Model trained! Overall Accuracy: {accuracy:.3f}")
+            print("📊 Per-class accuracy:")
+            for level in sorted(crowd_dist.keys()):
+                if str(level) in report:
+                    precision = report[str(level)]['precision']
+                    recall = report[str(level)]['recall']
+                    f1 = report[str(level)]['f1-score']
+                    print(f"  Level {level}: Precision={precision:.3f}, Recall={recall:.3f}, F1={f1:.3f}")
+            
+            # Save model and scaler
+            joblib.dump(self.model, 'models/crowd_prediction_model.pkl')
+            joblib.dump(self.scaler, 'models/crowd_prediction_scaler.pkl')
+            
+            # Store feature names for prediction
+            self.feature_names = [
+                'hour_of_day', 'day_of_week', 'month', 'day_of_year',
+                'is_weekend', 'is_rush_hour', 'is_late_night', 'is_morning_rush',
+                'is_evening_rush', 'is_midday', 'is_summer', 'is_winter',
+                'is_spring', 'is_fall', 'is_monday', 'is_friday', 'is_sunday',
+                'hour_sin', 'hour_cos', 'day_sin', 'day_cos', 'month_sin', 'month_cos',
+                'historical_avg', 'historical_std', 'traffic_level', 'station_popularity',
+                'is_express_route', 'is_local_route', 'is_manhattan', 'is_brooklyn',
+                'is_queens', 'is_bronx', 'rush_manhattan', 'weekend_brooklyn',
+                'late_night_express', 'is_holiday_season', 'is_summer_break', 'raw_entries'
+            ]
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Model training failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
         joblib.dump(self.scaler, self.scaler_path)
         
         return True
     
     def predict_crowd_level(self, station_id, route_id, target_datetime):
-        """Predict crowd level for specific station, route, and time using real features and classifier"""
+        """Predict crowd level using enhanced features for better accuracy"""
         # Load model if needed
         if not self.model:
             try:
-                self.model = joblib.load(self.model_path)
-                self.scaler = joblib.load(self.scaler_path)
+                self.model = joblib.load('models/crowd_prediction_model.pkl')
+                self.scaler = joblib.load('models/crowd_prediction_scaler.pkl')
             except:
                 return None
         
-        # Extract features
-        hour = target_datetime.hour
-        day = target_datetime.weekday()
-        is_weekend = 1 if day >= 5 else 0
-        is_rush_hour = 1 if hour in [7, 8, 9, 17, 18, 19] else 0
-        is_morning = 1 if 6 <= hour <= 11 else 0
-        is_evening = 1 if 17 <= hour <= 21 else 0
-        is_late_night = 1 if hour >= 22 or hour <= 5 else 0
-        
-        # Use historical averages for traffic_level and station_popularity
-        # Query the DB for recent net_traffic for this station/route/hour
-        recent_points = db.session.query(CrowdDataPoint).filter_by(
-            station_id=station_id, route_id=route_id, hour_of_day=hour
-        ).all()
-        if recent_points:
-            avg_traffic = np.mean([p.net_traffic or 0 for p in recent_points])
-            # Use same binning as in engineer_features
-            if avg_traffic <= 500:
-                traffic_level = 1
-            elif avg_traffic <= 1500:
-                traffic_level = 2
-            elif avg_traffic <= 3000:
-                traffic_level = 3
+        try:
+            # Extract all enhanced features
+            hour_of_day = target_datetime.hour
+            day_of_week = target_datetime.weekday()
+            month = target_datetime.month
+            day_of_year = target_datetime.timetuple().tm_yday
+            
+            # Basic time features
+            is_weekend = 1 if day_of_week >= 5 else 0
+            is_rush_hour = 1 if (7 <= hour_of_day <= 9) or (17 <= hour_of_day <= 19) else 0
+            is_late_night = 1 if hour_of_day >= 22 or hour_of_day <= 5 else 0
+            is_morning_rush = 1 if 7 <= hour_of_day <= 9 else 0
+            is_evening_rush = 1 if 17 <= hour_of_day <= 19 else 0
+            is_midday = 1 if 10 <= hour_of_day <= 16 else 0
+            
+            # Seasonal features
+            is_summer = 1 if month in [6, 7, 8] else 0
+            is_winter = 1 if month in [12, 1, 2] else 0
+            is_spring = 1 if month in [3, 4, 5] else 0
+            is_fall = 1 if month in [9, 10, 11] else 0
+            
+            # Day type features
+            is_monday = 1 if day_of_week == 0 else 0
+            is_friday = 1 if day_of_week == 4 else 0
+            is_sunday = 1 if day_of_week == 6 else 0
+            
+            # Cyclical time features
+            hour_sin = np.sin(2 * np.pi * hour_of_day / 24)
+            hour_cos = np.cos(2 * np.pi * hour_of_day / 24)
+            day_sin = np.sin(2 * np.pi * day_of_week / 7)
+            day_cos = np.cos(2 * np.pi * day_of_week / 7)
+            month_sin = np.sin(2 * np.pi * month / 12)
+            month_cos = np.cos(2 * np.pi * month / 12)
+            
+            # Get historical data for this station/route/time
+            historical_avg = self._get_historical_average(station_id, route_id, hour_of_day, day_of_week)
+            historical_std = self._get_historical_std(station_id, route_id, hour_of_day, day_of_week)
+            
+            # Traffic level based on historical data
+            if historical_std > 0:
+                traffic_level = (historical_avg - historical_avg) / historical_std  # Use historical avg as baseline
             else:
-                traffic_level = 4
-            station_popularity = len(recent_points)
-        else:
-            # Fallback to global average
-            all_points = db.session.query(CrowdDataPoint).filter_by(station_id=station_id).all()
-            if all_points:
-                avg_traffic = np.mean([p.net_traffic or 0 for p in all_points])
-                if avg_traffic <= 500:
-                    traffic_level = 1
-                elif avg_traffic <= 1500:
-                    traffic_level = 2
-                elif avg_traffic <= 3000:
-                    traffic_level = 3
-                else:
-                    traffic_level = 4
-                station_popularity = len(all_points)
-            else:
-                # Absolute fallback
-                traffic_level = 2
-                station_popularity = 50
-        
-        # Create feature array
-        features = np.array([[
-            hour, day, is_weekend, is_rush_hour,
-            is_morning, is_evening, is_late_night,
-            traffic_level, station_popularity
-        ]])
-        
-        # Predict
-        features_scaled = self.scaler.transform(features)
-        pred_class = self.model.predict(features_scaled)[0]
-        proba = self.model.predict_proba(features_scaled)[0]
-        # Get confidence for predicted class
-        class_index = list(self.model.classes_).index(pred_class)
-        confidence = float(proba[class_index])
+                traffic_level = 0
+            
+            # Station popularity
+            station_popularity = self._get_station_popularity(station_id, route_id)
+            
+            # Route-specific features
+            is_express_route = 1 if route_id in ['A', 'D', 'E', 'F', 'N', 'Q', 'R'] else 0
+            is_local_route = 1 if route_id in ['1', '2', '3', '4', '5', '6', '7', 'G', 'L', 'M'] else 0
+            
+            # Borough features (default to Manhattan if unknown)
+            is_manhattan = 1  # Default
+            is_brooklyn = 0
+            is_queens = 0
+            is_bronx = 0
+            
+            # Interaction features
+            rush_manhattan = is_rush_hour * is_manhattan
+            weekend_brooklyn = is_weekend * is_brooklyn
+            late_night_express = is_late_night * is_express_route
+            
+            # Weather-like features
+            is_holiday_season = 1 if month in [11, 12] else 0
+            is_summer_break = 1 if month in [6, 7, 8] else 0
+            
+            # Raw entries (use historical average as proxy)
+            raw_entries = historical_avg
+            
+            # Create feature vector
+            features = [
+                hour_of_day, day_of_week, month, day_of_year,
+                is_weekend, is_rush_hour, is_late_night, is_morning_rush,
+                is_evening_rush, is_midday, is_summer, is_winter,
+                is_spring, is_fall, is_monday, is_friday, is_sunday,
+                hour_sin, hour_cos, day_sin, day_cos, month_sin, month_cos,
+                historical_avg, historical_std, traffic_level, station_popularity,
+                is_express_route, is_local_route, is_manhattan, is_brooklyn,
+                is_queens, is_bronx, rush_manhattan, weekend_brooklyn,
+                late_night_express, is_holiday_season, is_summer_break, raw_entries
+            ]
+            
+            # Convert to DataFrame for scaling
+            import pandas as pd
+            features_df = pd.DataFrame([features], columns=self.feature_names)
+            
+            # Scale features
+            features_scaled = self.scaler.transform(features_df)
+            
+            # Make prediction
+            raw_prediction = self.model.predict(features_scaled)[0]
+            predicted_level = max(1, min(4, int(round(raw_prediction))))
+            
+            # Calculate confidence based on prediction precision and data availability
+            prediction_precision = 1.0 - abs(raw_prediction - predicted_level)
+            data_confidence = min(station_popularity * 0.1, 0.5)  # Based on data availability
+            confidence = min(0.95, max(0.1, (prediction_precision + data_confidence) / 2))
         
         return {
-            'predicted_crowd_level': int(pred_class),
-            'confidence_score': confidence,
-            'target_time': target_datetime.isoformat()
-        }
+                'predicted_crowd_level': predicted_level,
+                'confidence_score': confidence,
+                'raw_prediction': raw_prediction
+            }
+            
+        except Exception as e:
+            print(f"Error in prediction: {e}")
+            return None
