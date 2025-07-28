@@ -18,6 +18,11 @@ class CrowdDataPoint(db.Model):
     station_id = db.Column(db.String(20), db.ForeignKey('stops.id'), nullable=False)
     route_id = db.Column(db.String(10), db.ForeignKey('routes.id'), nullable=False)
     
+    # Station information
+    station_name = db.Column(db.String(100))  # Station name
+    borough = db.Column(db.String(50))        # Borough (Manhattan, Brooklyn, etc.)
+    transit_mode = db.Column(db.String(20), default='subway')  # Transit mode
+    
     # Time information
     timestamp = db.Column(db.DateTime, nullable=False)
     hour_of_day = db.Column(db.Integer, nullable=False)  # 0-23
@@ -31,6 +36,7 @@ class CrowdDataPoint(db.Model):
     
     # Data source tracking
     source = db.Column(db.String(50), default='mta_hourly_ridership')
+    data_source = db.Column(db.String(50), default='mta_hourly_ridership')  # Alternative field name
     mta_station_name = db.Column(db.String(100))  # Original MTA station name
     
     def to_dict(self):
@@ -39,6 +45,8 @@ class CrowdDataPoint(db.Model):
             'id': self.id,
             'station_id': self.station_id,
             'route_id': self.route_id,
+            'station_name': self.station_name,
+            'borough': self.borough,
             'crowd_level': self.crowd_level,
             'timestamp': self.timestamp.isoformat(),
             'net_traffic': self.net_traffic,

@@ -128,7 +128,7 @@ class CrowdPredictionService:
                 is_local_route = 1 if route_id in ['1', '2', '3', '4', '5', '6', '7', 'G', 'L', 'M'] else 0
                 
                 # Borough features
-                borough = point.borough.lower()
+                borough = getattr(point, 'borough', '').lower() if hasattr(point, 'borough') and point.borough else 'manhattan'
                 is_manhattan = 1 if 'manhattan' in borough else 0
                 is_brooklyn = 1 if 'brooklyn' in borough else 0
                 is_queens = 1 if 'queens' in borough else 0
@@ -381,10 +381,28 @@ class CrowdPredictionService:
             is_express_route = 1 if route_id in ['A', 'D', 'E', 'F', 'N', 'Q', 'R'] else 0
             is_local_route = 1 if route_id in ['1', '2', '3', '4', '5', '6', '7', 'G', 'L', 'M'] else 0
             # Borough features (default to Manhattan if unknown)
-            is_manhattan = 1  # Default
+            # Try to get borough from station_id or route_id patterns
+            is_manhattan = 1  # Default to Manhattan
             is_brooklyn = 0
             is_queens = 0
             is_bronx = 0
+            
+            # Simple borough guessing based on route_id patterns
+            if route_id in ['1', '2', '3', 'A', 'C', 'E']:
+                # These routes serve Manhattan heavily
+                is_manhattan = 1
+            elif route_id in ['4', '5', '6', 'B', 'D', 'F', 'M']:
+                # These routes serve multiple boroughs
+                is_manhattan = 1
+                is_brooklyn = 1
+            elif route_id in ['G', 'L']:
+                # Brooklyn-focused routes
+                is_manhattan = 0
+                is_brooklyn = 1
+            elif route_id in ['7', 'N', 'Q', 'R', 'W']:
+                # Queens-focused routes
+                is_manhattan = 1
+                is_queens = 1
             # Interaction features
             rush_manhattan = is_rush_hour * is_manhattan
             weekend_brooklyn = is_weekend * is_brooklyn

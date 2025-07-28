@@ -282,9 +282,27 @@ class MTACrowdService:
                     # Guess route (simplified - the hourly data doesn't include route info)
                     route_id = self._guess_route_from_complex_name(station_complex)
                     
+                    # Get borough from station match or guess from route
+                    borough = getattr(station_match, 'borough', None)
+                    if not borough:
+                        # Guess borough from route_id
+                        if route_id in ['1', '2', '3', 'A', 'C', 'E']:
+                            borough = 'Manhattan'
+                        elif route_id in ['4', '5', '6', 'B', 'D', 'F', 'M']:
+                            borough = 'Manhattan'  # Default for multi-borough routes
+                        elif route_id in ['G', 'L']:
+                            borough = 'Brooklyn'
+                        elif route_id in ['7', 'N', 'Q', 'R', 'W']:
+                            borough = 'Queens'
+                        else:
+                            borough = 'Manhattan'  # Default fallback
+                    
                     crowd_point = {
                         'station_id': station_match.id,
                         'route_id': route_id,
+                        'station_name': station_match.name if hasattr(station_match, 'name') else complex_name,
+                        'borough': borough,
+                        'transit_mode': 'subway',
                         'timestamp': timestamp,
                         'hour_of_day': timestamp.hour,
                         'day_of_week': timestamp.weekday(),
@@ -293,6 +311,7 @@ class MTACrowdService:
                         'raw_exits': 0,  # Not available in hourly data
                         'net_traffic': ridership,
                         'source': 'mta_hourly_ridership',
+                        'data_source': 'mta_hourly_ridership',
                         'mta_station_name': station_complex
                     }
                     
@@ -551,30 +570,70 @@ class MTACrowdService:
             batch_saved = 0
             for point_data in batch:
                 try:
-                    # Check for duplicates
-                    existing = CrowdDataPoint.query.filter_by(
-                        station_id=point_data['station_id'],
-                        timestamp=point_data['timestamp']
-                    ).first()
-                    
-                    if not existing:
+                    # Handle both dictionaries and CrowdDataPoint objects
+                    if isinstance(point_data, dict):
+                        # Ensure required fields are present
+                        if 'hour_of_day' not in point_data or point_data['hour_of_day'] is None:
+                            if 'timestamp' in point_data and point_data['timestamp']:
+                                point_data['hour_of_day'] = point_data['timestamp'].hour
+                            else:
+                                point_data['hour_of_day'] = 12  # Default to noon
+                        
+                        if 'day_of_week' not in point_data or point_data['day_of_week'] is None:
+                            if 'timestamp' in point_data and point_data['timestamp']:
+                                point_data['day_of_week'] = point_data['timestamp'].weekday()
+                            else:
+                                point_data['day_of_week'] = 0  # Default to Monday
+                        
                         crowd_point = CrowdDataPoint(**point_data)
-                        db.session.add(crowd_point)
-                        batch_saved += 1
+                    else:
+                        # It's already a CrowdDataPoint object
+                        crowd_point = point_data
+                    
+                    db.session.add(crowd_point)
+                    batch_saved += 1
                     
                 except Exception as e:
-                    if batch_saved <= 5:  # Show first 5 errors only
-                        print(f"    ⚠️  Error saving point: {e}")
+                    print(f"    ⚠️  Error saving point: {e}")
+                    # Rollback the session to clear the error state
+                    db.session.rollback()
                     continue
             
             try:
+                # Commit the batch
                 db.session.commit()
                 saved_count += batch_saved
-                print(f"    ✅ Batch {batch_num} complete: {batch_saved} new records saved")
+                print(f"    ✅ Batch {batch_num} saved: {batch_saved} records")
             except Exception as e:
-                db.session.rollback()
                 print(f"    ❌ Error committing batch {batch_num}: {e}")
-                continue
+                db.session.rollback()
+                # Try to save individual records from this batch
+                for point_data in batch:
+                    try:
+                        if isinstance(point_data, dict):
+                            # Ensure required fields are present
+                            if 'hour_of_day' not in point_data or point_data['hour_of_day'] is None:
+                                if 'timestamp' in point_data and point_data['timestamp']:
+                                    point_data['hour_of_day'] = point_data['timestamp'].hour
+                                else:
+                                    point_data['hour_of_day'] = 12
+                            
+                            if 'day_of_week' not in point_data or point_data['day_of_week'] is None:
+                                if 'timestamp' in point_data and point_data['timestamp']:
+                                    point_data['day_of_week'] = point_data['timestamp'].weekday()
+                                else:
+                                    point_data['day_of_week'] = 0
+                            
+                            crowd_point = CrowdDataPoint(**point_data)
+                        else:
+                            crowd_point = point_data
+                        
+                        db.session.add(crowd_point)
+                        db.session.commit()
+                        saved_count += 1
+                    except Exception as e:
+                        db.session.rollback()
+                        continue
         
         print(f"  ✅ Total saved: {saved_count} new crowd data points")
         return saved_count
@@ -669,17 +728,20 @@ class MTACrowdService:
                     crowd_level = 4  # Very High
                 
                 # Create crowd data point
-                crowd_point = CrowdDataPoint(
-                    station_id=station_id,
-                    station_name=station_name,
-                    route_id=route_id,
-                    transit_mode=transit_mode,
-                    borough=borough,
-                    crowd_level=crowd_level,
-                    raw_entries=int(avg_ridership),
-                    timestamp=datetime.now(),
-                    data_source="MTA Aggregated API"
-                )
+                crowd_point = {
+                    'station_id': station_id,
+                    'station_name': station_name,
+                    'route_id': route_id,
+                    'transit_mode': transit_mode,
+                    'borough': borough,
+                    'crowd_level': crowd_level,
+                    'raw_entries': int(avg_ridership),
+                    'timestamp': datetime.now(),
+                    'hour_of_day': datetime.now().hour,  # Extract hour from timestamp
+                    'day_of_week': datetime.now().weekday(),  # Extract day of week (0-6)
+                    'source': "MTA Aggregated API",
+                    'data_source': "MTA Aggregated API"
+                }
                 
                 crowd_points.append(crowd_point)
                 processed += 1
@@ -792,17 +854,20 @@ class MTACrowdService:
                     # Create timestamp
                     timestamp = end_date - timedelta(days=day, hours=hour)
                     
-                    crowd_point = CrowdDataPoint(
-                        station_id=station_id,
-                        station_name=station_name,
-                        route_id=route_id,
-                        transit_mode="subway",
-                        borough=borough,
-                        crowd_level=crowd_level,
-                        raw_entries=ridership,
-                        timestamp=timestamp,
-                        data_source="Sample Data"
-                    )
+                    crowd_point = {
+                        'station_id': station_id,
+                        'station_name': station_name,
+                        'route_id': route_id,
+                        'transit_mode': "subway",
+                        'borough': borough,
+                        'crowd_level': crowd_level,
+                        'raw_entries': ridership,
+                        'timestamp': timestamp,
+                        'hour_of_day': timestamp.hour,  # Extract hour from timestamp
+                        'day_of_week': timestamp.weekday(),  # Extract day of week (0-6)
+                        'source': "Sample Data",
+                        'data_source': "Sample Data"
+                    }
                     
                     crowd_points.append(crowd_point)
         
