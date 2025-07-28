@@ -252,67 +252,53 @@ class CrowdPredictionService:
     def train_model(self):
         """Train the crowd prediction model with enhanced features for 70%+ accuracy"""
         print("🤖 Training crowd prediction model...")
-        
         try:
             # Collect training data
             print("📊 Collecting training data from database...")
             data_points = self.collect_training_data()
-            
             if not data_points:
                 print("❌ No training data available")
-            return False
-        
+                return False
             print(f"✅ Collected {len(data_points)} training examples")
-            
             # Show crowd level distribution
             crowd_levels = [point.crowd_level for point in data_points]
             crowd_dist = {}
             for level in crowd_levels:
                 crowd_dist[level] = crowd_dist.get(level, 0) + 1
-            
             print("📊 Crowd level distribution:")
             for level in sorted(crowd_dist.keys()):
                 count = crowd_dist[level]
                 percentage = (count / len(data_points)) * 100
                 level_name = {1: "Low", 2: "Medium", 3: "High", 4: "Very High"}.get(level, f"Level {level}")
                 print(f"  Level {level} ({level_name}): {count} samples ({percentage:.1f}%)")
-            
             # Engineer enhanced features
             X, y = self.engineer_features(data_points)
-            
             if len(X) == 0:
                 print("❌ No features could be engineered")
                 return False
-        
-        # Split data
+            # Split data
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-        
-        # Scale features
+            # Scale features
             self.scaler = StandardScaler()
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
-        
+            X_train_scaled = self.scaler.fit_transform(X_train)
+            X_test_scaled = self.scaler.transform(X_test)
             # Train model with more trees for better accuracy
-        self.model = RandomForestRegressor(
+            self.model = RandomForestRegressor(
                 n_estimators=200,  # More trees for better accuracy
                 max_depth=15,      # Prevent overfitting
                 min_samples_split=10,
                 min_samples_leaf=5,
-            random_state=42
-        )
-        self.model.fit(X_train_scaled, y_train)
-        
-        # Evaluate
+                random_state=42
+            )
+            self.model.fit(X_train_scaled, y_train)
+            # Evaluate
             y_pred = self.model.predict(X_test_scaled)
             y_pred_rounded = np.round(y_pred).astype(int)
-            
             # Calculate accuracy
             accuracy = np.mean(y_pred_rounded == y_test)
-            
             # Calculate per-class accuracy
             from sklearn.metrics import classification_report
             report = classification_report(y_test, y_pred_rounded, output_dict=True)
-            
             print(f"✅ Model trained! Overall Accuracy: {accuracy:.3f}")
             print("📊 Per-class accuracy:")
             for level in sorted(crowd_dist.keys()):
@@ -321,11 +307,9 @@ class CrowdPredictionService:
                     recall = report[str(level)]['recall']
                     f1 = report[str(level)]['f1-score']
                     print(f"  Level {level}: Precision={precision:.3f}, Recall={recall:.3f}, F1={f1:.3f}")
-            
             # Save model and scaler
             joblib.dump(self.model, 'models/crowd_prediction_model.pkl')
             joblib.dump(self.scaler, 'models/crowd_prediction_scaler.pkl')
-            
             # Store feature names for prediction
             self.feature_names = [
                 'hour_of_day', 'day_of_week', 'month', 'day_of_year',
@@ -338,17 +322,12 @@ class CrowdPredictionService:
                 'is_queens', 'is_bronx', 'rush_manhattan', 'weekend_brooklyn',
                 'late_night_express', 'is_holiday_season', 'is_summer_break', 'raw_entries'
             ]
-            
             return True
-            
         except Exception as e:
             print(f"❌ Model training failed: {e}")
             import traceback
             traceback.print_exc()
             return False
-        joblib.dump(self.scaler, self.scaler_path)
-        
-        return True
     
     def predict_crowd_level(self, station_id, route_id, target_datetime):
         """Predict crowd level using enhanced features for better accuracy"""
@@ -357,16 +336,14 @@ class CrowdPredictionService:
             try:
                 self.model = joblib.load('models/crowd_prediction_model.pkl')
                 self.scaler = joblib.load('models/crowd_prediction_scaler.pkl')
-            except:
+            except Exception:
                 return None
-        
         try:
             # Extract all enhanced features
             hour_of_day = target_datetime.hour
             day_of_week = target_datetime.weekday()
             month = target_datetime.month
             day_of_year = target_datetime.timetuple().tm_yday
-            
             # Basic time features
             is_weekend = 1 if day_of_week >= 5 else 0
             is_rush_hour = 1 if (7 <= hour_of_day <= 9) or (17 <= hour_of_day <= 19) else 0
@@ -374,18 +351,15 @@ class CrowdPredictionService:
             is_morning_rush = 1 if 7 <= hour_of_day <= 9 else 0
             is_evening_rush = 1 if 17 <= hour_of_day <= 19 else 0
             is_midday = 1 if 10 <= hour_of_day <= 16 else 0
-            
             # Seasonal features
             is_summer = 1 if month in [6, 7, 8] else 0
             is_winter = 1 if month in [12, 1, 2] else 0
             is_spring = 1 if month in [3, 4, 5] else 0
             is_fall = 1 if month in [9, 10, 11] else 0
-            
             # Day type features
             is_monday = 1 if day_of_week == 0 else 0
             is_friday = 1 if day_of_week == 4 else 0
             is_sunday = 1 if day_of_week == 6 else 0
-            
             # Cyclical time features
             hour_sin = np.sin(2 * np.pi * hour_of_day / 24)
             hour_cos = np.cos(2 * np.pi * hour_of_day / 24)
@@ -393,42 +367,33 @@ class CrowdPredictionService:
             day_cos = np.cos(2 * np.pi * day_of_week / 7)
             month_sin = np.sin(2 * np.pi * month / 12)
             month_cos = np.cos(2 * np.pi * month / 12)
-            
             # Get historical data for this station/route/time
             historical_avg = self._get_historical_average(station_id, route_id, hour_of_day, day_of_week)
             historical_std = self._get_historical_std(station_id, route_id, hour_of_day, day_of_week)
-            
             # Traffic level based on historical data
             if historical_std > 0:
                 traffic_level = (historical_avg - historical_avg) / historical_std  # Use historical avg as baseline
             else:
                 traffic_level = 0
-            
             # Station popularity
             station_popularity = self._get_station_popularity(station_id, route_id)
-            
             # Route-specific features
             is_express_route = 1 if route_id in ['A', 'D', 'E', 'F', 'N', 'Q', 'R'] else 0
             is_local_route = 1 if route_id in ['1', '2', '3', '4', '5', '6', '7', 'G', 'L', 'M'] else 0
-            
             # Borough features (default to Manhattan if unknown)
             is_manhattan = 1  # Default
             is_brooklyn = 0
             is_queens = 0
             is_bronx = 0
-            
             # Interaction features
             rush_manhattan = is_rush_hour * is_manhattan
             weekend_brooklyn = is_weekend * is_brooklyn
             late_night_express = is_late_night * is_express_route
-            
             # Weather-like features
             is_holiday_season = 1 if month in [11, 12] else 0
             is_summer_break = 1 if month in [6, 7, 8] else 0
-            
             # Raw entries (use historical average as proxy)
             raw_entries = historical_avg
-            
             # Create feature vector
             features = [
                 hour_of_day, day_of_week, month, day_of_year,
@@ -441,29 +406,24 @@ class CrowdPredictionService:
                 is_queens, is_bronx, rush_manhattan, weekend_brooklyn,
                 late_night_express, is_holiday_season, is_summer_break, raw_entries
             ]
-            
             # Convert to DataFrame for scaling
-            import pandas as pd
             features_df = pd.DataFrame([features], columns=self.feature_names)
-            
             # Scale features
             features_scaled = self.scaler.transform(features_df)
-            
             # Make prediction
             raw_prediction = self.model.predict(features_scaled)[0]
             predicted_level = max(1, min(4, int(round(raw_prediction))))
-            
             # Calculate confidence based on prediction precision and data availability
             prediction_precision = 1.0 - abs(raw_prediction - predicted_level)
             data_confidence = min(station_popularity * 0.1, 0.5)  # Based on data availability
             confidence = min(0.95, max(0.1, (prediction_precision + data_confidence) / 2))
-        
-        return {
+            return {
                 'predicted_crowd_level': predicted_level,
                 'confidence_score': confidence,
                 'raw_prediction': raw_prediction
             }
-            
         except Exception as e:
             print(f"Error in prediction: {e}")
+            import traceback
+            traceback.print_exc()
             return None
