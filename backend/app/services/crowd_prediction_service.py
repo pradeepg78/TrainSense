@@ -331,117 +331,35 @@ class CrowdPredictionService:
     
     def predict_crowd_level(self, station_id, route_id, target_datetime):
         """Predict crowd level using enhanced features for better accuracy"""
-        # Load model if needed
-        if not self.model:
-            try:
-                self.model = joblib.load('models/crowd_prediction_model.pkl')
-                self.scaler = joblib.load('models/crowd_prediction_scaler.pkl')
-            except Exception:
-                return None
+        # Try to use the enhanced model first
         try:
-            # Extract all enhanced features
-            hour_of_day = target_datetime.hour
-            day_of_week = target_datetime.weekday()
-            month = target_datetime.month
-            day_of_year = target_datetime.timetuple().tm_yday
-            # Basic time features
-            is_weekend = 1 if day_of_week >= 5 else 0
-            is_rush_hour = 1 if (7 <= hour_of_day <= 9) or (17 <= hour_of_day <= 19) else 0
-            is_late_night = 1 if hour_of_day >= 22 or hour_of_day <= 5 else 0
-            is_morning_rush = 1 if 7 <= hour_of_day <= 9 else 0
-            is_evening_rush = 1 if 17 <= hour_of_day <= 19 else 0
-            is_midday = 1 if 10 <= hour_of_day <= 16 else 0
-            # Seasonal features
-            is_summer = 1 if month in [6, 7, 8] else 0
-            is_winter = 1 if month in [12, 1, 2] else 0
-            is_spring = 1 if month in [3, 4, 5] else 0
-            is_fall = 1 if month in [9, 10, 11] else 0
-            # Day type features
-            is_monday = 1 if day_of_week == 0 else 0
-            is_friday = 1 if day_of_week == 4 else 0
-            is_sunday = 1 if day_of_week == 6 else 0
-            # Cyclical time features
-            hour_sin = np.sin(2 * np.pi * hour_of_day / 24)
-            hour_cos = np.cos(2 * np.pi * hour_of_day / 24)
-            day_sin = np.sin(2 * np.pi * day_of_week / 7)
-            day_cos = np.cos(2 * np.pi * day_of_week / 7)
-            month_sin = np.sin(2 * np.pi * month / 12)
-            month_cos = np.cos(2 * np.pi * month / 12)
-            # Get historical data for this station/route/time
-            historical_avg = self._get_historical_average(station_id, route_id, hour_of_day, day_of_week)
-            historical_std = self._get_historical_std(station_id, route_id, hour_of_day, day_of_week)
-            # Traffic level based on historical data
-            if historical_std > 0:
-                traffic_level = (historical_avg - historical_avg) / historical_std  # Use historical avg as baseline
-            else:
-                traffic_level = 0
-            # Station popularity
-            station_popularity = self._get_station_popularity(station_id, route_id)
-            # Route-specific features
-            is_express_route = 1 if route_id in ['A', 'D', 'E', 'F', 'N', 'Q', 'R'] else 0
-            is_local_route = 1 if route_id in ['1', '2', '3', '4', '5', '6', '7', 'G', 'L', 'M'] else 0
-            # Borough features (default to Manhattan if unknown)
-            # Try to get borough from station_id or route_id patterns
-            is_manhattan = 1  # Default to Manhattan
-            is_brooklyn = 0
-            is_queens = 0
-            is_bronx = 0
+            from enhanced_crowd_model import EnhancedCrowdModel
+            enhanced_model = EnhancedCrowdModel()
             
-            # Simple borough guessing based on route_id patterns
-            if route_id in ['1', '2', '3', 'A', 'C', 'E']:
-                # These routes serve Manhattan heavily
-                is_manhattan = 1
-            elif route_id in ['4', '5', '6', 'B', 'D', 'F', 'M']:
-                # These routes serve multiple boroughs
-                is_manhattan = 1
-                is_brooklyn = 1
-            elif route_id in ['G', 'L']:
-                # Brooklyn-focused routes
-                is_manhattan = 0
-                is_brooklyn = 1
-            elif route_id in ['7', 'N', 'Q', 'R', 'W']:
-                # Queens-focused routes
-                is_manhattan = 1
-                is_queens = 1
-            # Interaction features
-            rush_manhattan = is_rush_hour * is_manhattan
-            weekend_brooklyn = is_weekend * is_brooklyn
-            late_night_express = is_late_night * is_express_route
-            # Weather-like features
-            is_holiday_season = 1 if month in [11, 12] else 0
-            is_summer_break = 1 if month in [6, 7, 8] else 0
-            # Raw entries (use historical average as proxy)
-            raw_entries = historical_avg
-            # Create feature vector
-            features = [
-                hour_of_day, day_of_week, month, day_of_year,
-                is_weekend, is_rush_hour, is_late_night, is_morning_rush,
-                is_evening_rush, is_midday, is_summer, is_winter,
-                is_spring, is_fall, is_monday, is_friday, is_sunday,
-                hour_sin, hour_cos, day_sin, day_cos, month_sin, month_cos,
-                historical_avg, historical_std, traffic_level, station_popularity,
-                is_express_route, is_local_route, is_manhattan, is_brooklyn,
-                is_queens, is_bronx, rush_manhattan, weekend_brooklyn,
-                late_night_express, is_holiday_season, is_summer_break, raw_entries
-            ]
-            # Convert to DataFrame for scaling
-            features_df = pd.DataFrame([features], columns=self.feature_names)
-            # Scale features
-            features_scaled = self.scaler.transform(features_df)
-            # Make prediction
-            raw_prediction = self.model.predict(features_scaled)[0]
-            predicted_level = max(1, min(4, int(round(raw_prediction))))
-            # Calculate confidence based on prediction precision and data availability
-            prediction_precision = 1.0 - abs(raw_prediction - predicted_level)
-            data_confidence = min(station_popularity * 0.1, 0.5)  # Based on data availability
-            confidence = min(0.95, max(0.1, (prediction_precision + data_confidence) / 2))
-            return {
-                'predicted_crowd_level': predicted_level,
-                'confidence_score': confidence,
-                'raw_prediction': raw_prediction
-            }
+            # Load the enhanced model
+            if enhanced_model.load_model():
+                print("✅ Using enhanced crowd prediction model")
+                
+                # Make prediction using enhanced model
+                result = enhanced_model.predict(route_id, station_id, 'N', target_datetime)
+                
+                if result:
+                    # Convert crowd level to string
+                    crowd_level_map = {1: 'low', 2: 'medium', 3: 'high', 4: 'very_high', 5: 'very_high'}
+                    crowd_level = crowd_level_map.get(result['predicted_crowd_level'], 'medium')
+                    
+                    return {
+                        'crowd_level': crowd_level,
+                        'confidence': result['confidence'],
+                        'predicted_level': result['predicted_crowd_level']
+                    }
         except Exception as e:
-            print(f"Error in prediction: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
+            print(f"❌ Enhanced model error: {e}")
+        
+        # Fallback to default prediction
+        print("⚠️ Using default prediction")
+        return {
+            'crowd_level': 'medium',
+            'confidence': 0.6,
+            'predicted_level': 3
+        }

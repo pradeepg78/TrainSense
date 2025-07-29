@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'http://127.0.0.1:5001/api';
+const API_BASE_URL = 'http://192.168.1.164:5001/api';
 
 // Types for API responses
 export interface Route {
@@ -65,6 +65,21 @@ export interface ServiceStatus {
 export interface RealtimeUpdate {
   stop: Stop;
   arrivals: Arrival[];
+}
+
+export interface CrowdPrediction {
+  station_id: string;
+  prediction: {
+    crowd_level: "low" | "medium" | "high" | "very_high";
+    confidence: number;
+    timestamp: string;
+    factors: string[];
+  };
+  historical_data?: {
+    average_crowd: number;
+    peak_hours: string[];
+    trends: string[];
+  };
 }
 
 export interface ApiResponse<T> {
@@ -186,5 +201,10 @@ export const apiService = {
   // Route Shape
   async getRouteShape(routeId: string): Promise<ApiResponse<any>> {
     return apiRequest<any>(`/route-shape/${routeId}`);
+  },
+
+  // Crowd Prediction
+  async getCrowdPrediction(stationId: string): Promise<ApiResponse<CrowdPrediction>> {
+    return apiRequest<CrowdPrediction>(`/crowd/prediction/${stationId}`);
   },
 };
