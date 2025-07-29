@@ -122,3 +122,27 @@ logs/
 mta_data/
 gtfs_data/
 realtime_feeds/
+# Virtual environments
+backend/trainSenseVenv/
+backend/venv/
+backend/*venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
