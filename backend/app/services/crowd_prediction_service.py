@@ -18,17 +18,67 @@ class CrowdPredictionService:
     ML service for predicting crowd levels from historical MTA patterns
     """
     
+    _instance = None
+    _model_loaded = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(CrowdPredictionService, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
-        self.model = None
-        self.scaler = StandardScaler()
-        
-        # Model storage paths
-        self.model_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        os.makedirs(self.model_dir, exist_ok=True)
-        self.model_path = os.path.join(self.model_dir, 'crowd_prediction_model.pkl')
-        self.scaler_path = os.path.join(self.model_dir, 'crowd_prediction_scaler.pkl')
-        
-        self.feature_names = []
+        if not CrowdPredictionService._model_loaded:
+            self.model = None
+            self.scaler = StandardScaler()
+            
+            # Model storage paths
+            self.model_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
+            os.makedirs(self.model_dir, exist_ok=True)
+            self.model_path = os.path.join(self.model_dir, 'crowd_prediction_model.pkl')
+            self.scaler_path = os.path.join(self.model_dir, 'crowd_prediction_scaler.pkl')
+            
+            self.feature_names = []
+            
+            # Try to load existing model
+            self._load_model()
+            
+            CrowdPredictionService._model_loaded = True
+    
+    def _load_model(self):
+        """Load the trained model and scaler"""
+        try:
+            print(f"🔍 Trying to load model from: {self.model_path}")
+            print(f"🔍 Model file exists: {os.path.exists(self.model_path)}")
+            print(f"🔍 Scaler file exists: {os.path.exists(self.scaler_path)}")
+            
+            if os.path.exists(self.model_path) and os.path.exists(self.scaler_path):
+                self.model = joblib.load(self.model_path)
+                self.scaler = joblib.load(self.scaler_path)
+                
+                # Set feature names (these should match the training features)
+                self.feature_names = [
+                    'hour_of_day', 'day_of_week', 'month', 'day_of_year',
+                    'is_weekend', 'is_rush_hour', 'is_late_night', 'is_morning_rush',
+                    'is_evening_rush', 'is_midday', 'is_summer', 'is_winter',
+                    'is_spring', 'is_fall', 'is_monday', 'is_friday', 'is_sunday',
+                    'hour_sin', 'hour_cos', 'day_sin', 'day_cos', 'month_sin', 'month_cos',
+                    'historical_avg', 'historical_std', 'traffic_level', 'station_popularity',
+                    'is_express_route', 'is_local_route', 'is_manhattan', 'is_brooklyn',
+                    'is_queens', 'is_bronx', 'rush_manhattan', 'weekend_brooklyn',
+                    'late_night_express', 'is_holiday_season', 'is_summer_break', 'raw_entries'
+                ]
+                
+                print("✅ Model loaded successfully")
+                print(f"📊 Feature names set: {len(self.feature_names)} features")
+                return True
+            else:
+                print("⚠️  Model files not found")
+                return False
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def collect_training_data(self):
         """Get all crowd data from database for ML training"""
@@ -307,9 +357,14 @@ class CrowdPredictionService:
                     recall = report[str(level)]['recall']
                     f1 = report[str(level)]['f1-score']
                     print(f"  Level {level}: Precision={precision:.3f}, Recall={recall:.3f}, F1={f1:.3f}")
+            
             # Save model and scaler
-            joblib.dump(self.model, 'models/crowd_prediction_model.pkl')
-            joblib.dump(self.scaler, 'models/crowd_prediction_scaler.pkl')
+            # joblib.dump(self.model, 'models/crowd_prediction_model.pkl')
+            # joblib.dump(self.scaler, 'models/crowd_prediction_scaler.pkl')
+            joblib.dump(self.model, self.model_path)
+            joblib.dump(self.scaler, self.scaler_path)
+
+
             # Store feature names for prediction
             self.feature_names = [
                 'hour_of_day', 'day_of_week', 'month', 'day_of_year',
@@ -331,13 +386,10 @@ class CrowdPredictionService:
     
     def predict_crowd_level(self, station_id, route_id, target_datetime):
         """Predict crowd level using enhanced features for better accuracy"""
-        # Load model if needed
+        # Check if model is loaded
         if not self.model:
-            try:
-                self.model = joblib.load('models/crowd_prediction_model.pkl')
-                self.scaler = joblib.load('models/crowd_prediction_scaler.pkl')
-            except Exception:
-                return None
+            print("❌ No trained model available")
+            return None
         try:
             # Extract all enhanced features
             hour_of_day = target_datetime.hour

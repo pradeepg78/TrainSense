@@ -5,7 +5,7 @@ API endpoints for crowd prediction
 from flask import Blueprint, request, jsonify
 from app.services.crowd_prediction_service import CrowdPredictionService
 from app.services.mta_crowd_service import MTACrowdService
-from app.models.crowd_prediction import CrowdDataPoint
+from app.models.crowd_prediction import CrowdDataPoint, db
 from datetime import datetime, timedelta
 
 crowd_bp = Blueprint('crowd_prediction', __name__, url_prefix='/api/crowd')
