@@ -28,12 +28,19 @@ const MapScreen = () => {
   const [zoomLevel, setZoomLevel] = useState("city"); // neighborhood, city, borough
   const [stations, setStations] = useState<MapStation[]>([]);
   const [selectedStation, setSelectedStation] = useState<Stop | null>(null);
+
+  // Debug: Log when stations state changes
+  useEffect(() => {
+    console.log("Stations state changed:", stations.length, "stations");
+  }, [stations]);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showStationModal, setShowStationModal] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
-  const [crowdPredictions, setCrowdPredictions] = useState<{[stationId: string]: any}>({});
+  const [crowdPredictions, setCrowdPredictions] = useState<{
+    [stationId: string]: any;
+  }>({});
 
   const mapRef = useRef<MapView>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -146,20 +153,29 @@ const MapScreen = () => {
 
     try {
       // Load stations for current map view
+      console.log("Loading stations...");
       const response = await apiService.getMapStations();
+      console.log("Stations response:", response);
       if (response.success && response.data) {
+        console.log("Setting stations:", response.data.length, "stations");
+        console.log("First station:", response.data[0]);
         setStations(response.data);
-        
+
         // Fetch crowd predictions for stations
-        const predictions: {[stationId: string]: any} = {};
+        const predictions: { [stationId: string]: any } = {};
         for (const station of response.data) {
           try {
-            const crowdResponse = await apiService.getCrowdPrediction(station.id);
+            const crowdResponse = await apiService.getCrowdPrediction(
+              station.id
+            );
             if (crowdResponse.success && crowdResponse.data) {
               predictions[station.id] = crowdResponse.data;
             }
           } catch (error) {
-            console.error(`Error fetching crowd prediction for ${station.id}:`, error);
+            console.error(
+              `Error fetching crowd prediction for ${station.id}:`,
+              error
+            );
           }
         }
         setCrowdPredictions(predictions);
@@ -170,8 +186,11 @@ const MapScreen = () => {
       // Load route shapes
       async function fetchRouteShapes() {
         try {
+          if (!response.data) return;
           const uniqueRoutes = new Set(
-            stations.flatMap((station) => (station.routes || []).map((r) => r.id))
+            response.data.flatMap((station) =>
+              (station.routes || []).map((r) => r.id)
+            )
           );
           const lines: any = {};
           for (const routeId of uniqueRoutes) {
@@ -228,7 +247,9 @@ const MapScreen = () => {
       // Handle single station
       const routeObjs = allRoutes.map((routeId) => {
         const route = routes.find((r) => r.id === routeId);
-        return route || { id: routeId, short_name: routeId, long_name: routeId };
+        return (
+          route || { id: routeId, short_name: routeId, long_name: routeId }
+        );
       });
 
       setSelectedStation({
@@ -302,7 +323,7 @@ const MapScreen = () => {
   const getCrowdLevelColor = (stationId: string) => {
     const prediction = crowdPredictions[stationId];
     if (!prediction) return "#2193b0"; // Default color
-    
+
     switch (prediction.prediction.crowd_level) {
       case "low":
         return "#10B981"; // Green
@@ -378,9 +399,19 @@ const MapScreen = () => {
 
     async function fetchTrunkSegments() {
       try {
-        // This would fetch actual trunk line data from your API
-        // For now, we'll use a placeholder
-        setTrunkSegments([]);
+        console.log("Fetching trunk segments...");
+        const response = await apiService.getTrunkShapes();
+        console.log("Trunk segments response:", response);
+        if (response.success && response.data) {
+          console.log(
+            "Setting trunk segments:",
+            response.data.length,
+            "segments"
+          );
+          setTrunkSegments(response.data);
+        } else {
+          console.log("Failed to get trunk segments:", response.error);
+        }
       } catch (error) {
         console.error("Error fetching trunk segments:", error);
       }
@@ -401,6 +432,30 @@ const MapScreen = () => {
     return zoomLevel === "neighborhood";
   }
 
+  // Helper: Calculate better position for intersection stations
+  function getIntersectionPosition(group: MapStation[]) {
+    if (group.length <= 1) {
+      // Single station - use original position
+      return {
+        latitude: group[0].latitude,
+        longitude: group[0].longitude,
+      };
+    }
+
+    // For intersections, try to find the most central position
+    // This could be improved by finding the actual intersection point of subway lines
+    const avgLat = group.reduce((sum, s) => sum + s.latitude, 0) / group.length;
+    const avgLon =
+      group.reduce((sum, s) => sum + s.longitude, 0) / group.length;
+
+    // Add small offset to better align with subway lines
+    const offset = 0.00002; // Small offset to center on lines
+    return {
+      latitude: avgLat + offset,
+      longitude: avgLon + offset,
+    };
+  }
+
   // Helper: Offset dot perpendicular to the line (if possible)
   function getDotOffset(station: MapStation) {
     // For now, just a small fixed offset (could be improved with line direction)
@@ -418,8 +473,12 @@ const MapScreen = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent
+      />
+
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -439,6 +498,21 @@ const MapScreen = () => {
             elementType: "labels",
             stylers: [{ visibility: "off" }],
           },
+          {
+            featureType: "road",
+            elementType: "geometry",
+            stylers: [{ color: "#f8f9fa" }],
+          },
+          {
+            featureType: "landscape",
+            elementType: "geometry",
+            stylers: [{ color: "#f5f5f5" }],
+          },
+          {
+            featureType: "water",
+            elementType: "geometry",
+            stylers: [{ color: "#e3f2fd" }],
+          },
         ]}
       >
         {/* Always render subway lines (polylines) at all zoom levels */}
@@ -448,30 +522,27 @@ const MapScreen = () => {
             trunkSegments.length,
             "trunk segments"
           );
+          if (trunkSegments.length === 0) {
+            console.log("No trunk segments to render");
+          } else {
+            console.log(
+              "Rendering trunk segments:",
+              trunkSegments.map((s) => s.route)
+            );
+          }
           return trunkSegments.map((segment, index) => (
             <Polyline
               key={`trunk-${index}-${segment.route}`}
               coordinates={segment.polyline}
               strokeColor={getMtaColor(segment.route).background}
-              strokeWidth={8}
+              strokeWidth={10}
               zIndex={10}
               lineCap="round"
+              lineJoin="round"
             />
           ));
         })()}
-        {/* Test polyline to ensure rendering works */}
-        <Polyline
-          key="test-polyline"
-          coordinates={[
-            { latitude: 40.7831, longitude: -73.9712 },
-            { latitude: 40.7589, longitude: -73.9851 },
-            { latitude: 40.7505, longitude: -73.9934 },
-          ]}
-          strokeColor="#FF0000"
-          strokeWidth={10}
-          zIndex={20}
-          lineCap="round"
-        />
+
         {/* Fallback: render routeStationLines if no trunk segments */}
         {trunkSegments.length === 0 &&
           Object.entries(routeStationLines).map(([routeId, coords]) => (
@@ -479,13 +550,20 @@ const MapScreen = () => {
               key={`fallback-route-${routeId}`}
               coordinates={coords}
               strokeColor={getMtaColor(routeId).background}
-              strokeWidth={8}
+              strokeWidth={10}
               zIndex={10}
               lineCap="round"
+              lineJoin="round"
             />
           ))}
+
         {/* Draw station markers at all zoom levels */}
         {(() => {
+          console.log("Rendering stations:", stations.length, "stations");
+          if (stations.length === 0) {
+            console.log("No stations to render!");
+            return null;
+          }
           // Group stations by hub_id
           const hubs: { [hubId: string]: MapStation[] } = {};
           stations.forEach((station) => {
@@ -493,54 +571,65 @@ const MapScreen = () => {
             if (!hubs[hubId]) hubs[hubId] = [];
             hubs[hubId].push(station);
           });
+          console.log("Station hubs:", Object.keys(hubs).length, "hubs");
           // For each hub, compute center and routes
           return Object.entries(hubs).map(([hubId, group]) => {
-            const lat =
-              group.reduce((sum, s) => sum + s.latitude, 0) / group.length;
-            const lon =
-              group.reduce((sum, s) => sum + s.longitude, 0) / group.length;
+            const position = getIntersectionPosition(group);
+            console.log(
+              `Rendering station ${hubId} at ${position.latitude}, ${position.longitude}`
+            );
             if (group.length === 1) {
-              // Regular station dot
+              // Regular station dot with modern styling
               return (
                 <Marker
                   key={hubId}
-                  coordinate={{ latitude: lat, longitude: lon }}
+                  coordinate={{
+                    latitude: position.latitude,
+                    longitude: position.longitude,
+                  }}
                   onPress={() => handleMarkerPress(group[0])}
                 >
-                  <View style={[
-                    styles.stationDot, 
-                    getDotOffset(group[0]),
-                    { borderColor: getCrowdLevelColor(group[0].id) }
-                  ]} />
+                  <View style={[styles.stationDot, getDotOffset(group[0])]}>
+                    {/* Inner colored circle for some stations */}
+                    {group[0].routes && group[0].routes.length > 0 && (
+                      <View
+                        style={[
+                          styles.innerCircle,
+                          {
+                            backgroundColor: getMtaColor(group[0].routes[0].id)
+                              .background,
+                          },
+                        ]}
+                      />
+                    )}
+                  </View>
                 </Marker>
               );
             } else {
-              // Transfer hub ellipse (no route symbols inside)
-              const w = Math.max(
-                24,
-                Math.min(24 + 4 * (group.length - 1), 40)
-              );
-              const h = Math.max(
-                12,
-                Math.min(12 + 2 * (group.length - 1), 20)
-              );
+              // Transfer hub - use larger dot for intersections
               return (
                 <Marker
                   key={hubId}
-                  coordinate={{ latitude: lat, longitude: lon }}
+                  coordinate={{
+                    latitude: position.latitude,
+                    longitude: position.longitude,
+                  }}
                   onPress={() => handleMarkerPress(group)}
                 >
-                  <View
-                    style={[
-                      styles.majorOval,
-                      { 
-                        width: w, 
-                        height: h, 
-                        borderRadius: h,
-                        borderColor: getCrowdLevelColor(group[0].id)
-                      },
-                    ]}
-                  />
+                  <View style={[styles.transferHubDot, getDotOffset(group[0])]}>
+                    {/* Show multiple route colors for transfer hubs */}
+                    {group[0].routes && group[0].routes.length > 0 && (
+                      <View
+                        style={[
+                          styles.innerCircle,
+                          {
+                            backgroundColor: getMtaColor(group[0].routes[0].id)
+                              .background,
+                          },
+                        ]}
+                      />
+                    )}
+                  </View>
                 </Marker>
               );
             }
@@ -556,24 +645,21 @@ const MapScreen = () => {
         >
           <Ionicons name="locate" size={24} color="#2193b0" />
         </TouchableOpacity>
-        
+
         <TouchableOpacity
           style={styles.controlButton}
           onPress={onRefresh}
           disabled={refreshing}
         >
-          <Ionicons 
-            name="refresh" 
-            size={24} 
-            color="#2193b0" 
+          <Ionicons
+            name="refresh"
+            size={24}
+            color="#2193b0"
             style={refreshing ? styles.spinning : undefined}
           />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={toggleControls}
-        >
+        <TouchableOpacity style={styles.controlButton} onPress={toggleControls}>
           <Ionicons name="eye" size={24} color="#2193b0" />
         </TouchableOpacity>
       </Animated.View>
@@ -589,16 +675,6 @@ const MapScreen = () => {
           <Text style={styles.statusText}>{routes.length} routes</Text>
         </View>
       </View>
-
-      {/* Modern Loading Overlay */}
-      {isLoading && (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingCard}>
-            <Ionicons name="refresh" size={32} color="#2193b0" style={styles.spinning} />
-            <Text style={styles.loadingText}>Loading stations...</Text>
-          </View>
-        </View>
-      )}
 
       {/* Modern Error Overlay */}
       {apiError && (
@@ -638,60 +714,60 @@ const styles = StyleSheet.create({
   },
   controls: {
     position: "absolute",
-    top: Platform.OS === 'ios' ? 60 : 50,
+    top: Platform.OS === "ios" ? 60 : 50,
     right: 20,
-    gap: 12,
+    gap: 16,
     zIndex: 10,
   },
   controlButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: 28,
-    width: 56,
-    height: 56,
+    backgroundColor: "rgba(255, 255, 255, 0.98)",
+    borderRadius: 32,
+    width: 60,
+    height: 60,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 6,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
+    borderColor: "rgba(255, 255, 255, 0.9)",
   },
   statusBar: {
     position: "absolute",
-    bottom: Platform.OS === 'ios' ? 40 : 30,
+    bottom: Platform.OS === "ios" ? 40 : 30,
     left: 20,
     right: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.98)",
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     flexDirection: "row",
     justifyContent: "space-around",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 6,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
+    borderColor: "rgba(255, 255, 255, 0.9)",
   },
   statusItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   statusText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1a1a1a",
   },
   loadingOverlay: {
     position: "absolute",
@@ -726,16 +802,40 @@ const styles = StyleSheet.create({
   },
   errorOverlay: {
     position: "absolute",
-    top: Platform.OS === 'ios' ? 100 : 80,
+    top: Platform.OS === "ios" ? 100 : 80,
     left: 20,
     right: 20,
     zIndex: 20,
   },
   errorCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.98)",
+    borderRadius: 20,
+    padding: 24,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.9)",
+  },
+  errorText: {
+    color: "#FF6B6B",
+    fontSize: 15,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: "#2193b0",
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 16,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -743,36 +843,12 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
-  },
-  errorText: {
-    color: "#FF6B6B",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: "#2193b0",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    elevation: 6,
   },
   retryButtonText: {
     color: "white",
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
   },
   spinning: {
     transform: [{ rotate: "360deg" }],
@@ -781,9 +857,22 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: "#fff",
+    backgroundColor: "white",
+    borderWidth: 2,
+    borderColor: "black",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  transferHubDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "white",
     borderWidth: 3,
-    borderColor: "#2193b0",
+    borderColor: "black",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
@@ -791,17 +880,23 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   majorOval: {
-    width: 32,
-    height: 20,
-    borderRadius: 20,
-    backgroundColor: "#fff",
-    borderWidth: 3,
-    borderColor: "#2193b0",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#2193b0",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  innerCircle: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    position: "absolute",
+    top: 3,
+    left: 3,
   },
 });
 

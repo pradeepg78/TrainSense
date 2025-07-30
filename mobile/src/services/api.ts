@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'http://192.168.1.164:5001/api';
+const API_BASE_URL = 'http://localhost:5001/api';
 
 // Types for API responses
 export interface Route {
@@ -69,16 +69,21 @@ export interface RealtimeUpdate {
 
 export interface CrowdPrediction {
   station_id: string;
+  route_id?: string;
   prediction: {
     crowd_level: "low" | "medium" | "high" | "very_high";
     confidence: number;
+    confidence_description: string;
+    method: string;
     timestamp: string;
     factors: string[];
+    data_points_used?: number;
   };
   historical_data?: {
     average_crowd: number;
     peak_hours: string[];
     trends: string[];
+    data_source?: string;
   };
 }
 
@@ -99,6 +104,7 @@ async function apiRequest<T>(
   try {
     const url = `${API_BASE_URL}${endpoint}`;
     console.log(`Making API request to: ${url}`);
+    console.log(`API_BASE_URL: ${API_BASE_URL}`);
     
     const response = await fetch(url, {
       headers: {
@@ -206,5 +212,10 @@ export const apiService = {
   // Crowd Prediction
   async getCrowdPrediction(stationId: string): Promise<ApiResponse<CrowdPrediction>> {
     return apiRequest<CrowdPrediction>(`/crowd/prediction/${stationId}`);
+  },
+
+  // Trunk Shapes
+  async getTrunkShapes(): Promise<ApiResponse<any[]>> {
+    return apiRequest<any[]>('/trunk-shapes');
   },
 };

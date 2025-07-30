@@ -1,15 +1,21 @@
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { apiService, Arrival, Route, Stop } from "../services/api";
+import {
+  apiService,
+  Arrival,
+  CrowdPrediction,
+  Route,
+  Stop,
+} from "../services/api";
 import RouteSymbol from "./RouteSymbol";
 
 interface StationModalProps {
@@ -22,21 +28,6 @@ interface ArrivalGroup {
   route: Route;
   direction: string;
   arrivals: Arrival[];
-}
-
-interface CrowdPrediction {
-  station_id: string;
-  prediction: {
-    crowd_level: "low" | "medium" | "high" | "very_high";
-    confidence: number;
-    timestamp: string;
-    factors: string[];
-  };
-  historical_data?: {
-    average_crowd: number;
-    peak_hours: string[];
-    trends: string[];
-  };
 }
 
 const MTA_ROUTE_ORDER = [
@@ -88,11 +79,11 @@ export const StationModal: React.FC<StationModalProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastStationId, setLastStationId] = useState<string | null>(null);
-  
-  // Crowd prediction state
-  const [crowdPrediction, setCrowdPrediction] = useState<CrowdPrediction | null>(null);
-  const [crowdLoading, setCrowdLoading] = useState(false);
-  const [crowdError, setCrowdError] = useState<string | null>(null);
+
+  // Crowd prediction state (simplified)
+  const [crowdLevel, setCrowdLevel] = useState<"low" | "medium" | "high">(
+    "medium"
+  );
 
   const fetchArrivals = async (isRefresh = false) => {
     if (!station) return;
@@ -122,31 +113,10 @@ export const StationModal: React.FC<StationModalProps> = ({
     }
   };
 
-  const fetchCrowdPrediction = async () => {
-    if (!station) return;
-
-    try {
-      setCrowdLoading(true);
-      setCrowdError(null);
-
-      const response = await apiService.getCrowdPrediction(station.id);
-
-      if (response.success && response.data) {
-        setCrowdPrediction(response.data);
-      } else {
-        setCrowdError(response.error || "Failed to fetch crowd prediction");
-      }
-    } catch (err) {
-      setCrowdError("Network error. Please try again.");
-    } finally {
-      setCrowdLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (visible && station) {
       fetchArrivals();
-      fetchCrowdPrediction();
+      fetchCrowdData();
     }
   }, [visible, station]);
 
@@ -174,7 +144,7 @@ export const StationModal: React.FC<StationModalProps> = ({
       const routeId = arrival.route;
       const direction = arrival.direction;
       const groupKey = `${routeId}-${direction}`;
-      
+
       if (!groups[groupKey]) {
         // Find the actual route data from station routes
         const actualRoute = station?.routes?.find((r) => r.id === routeId);
@@ -195,26 +165,13 @@ export const StationModal: React.FC<StationModalProps> = ({
 
     return Object.values(groups).sort((a, b) => {
       // First sort by route name
-      const routeComparison = a.route.short_name.localeCompare(b.route.short_name);
+      const routeComparison = a.route.short_name.localeCompare(
+        b.route.short_name
+      );
       if (routeComparison !== 0) return routeComparison;
       // Then sort by direction (Northbound first, then Southbound, etc.)
       return a.direction.localeCompare(b.direction);
     });
-  };
-
-  const getCrowdLevelStyle = (level: string) => {
-    switch (level) {
-      case "low":
-        return styles.crowdLow;
-      case "medium":
-        return styles.crowdMedium;
-      case "high":
-        return styles.crowdHigh;
-      case "very_high":
-        return styles.crowdVeryHigh;
-      default:
-        return styles.crowdLow;
-    }
   };
 
   const formatArrivalTime = (minutes: number): string => {
@@ -236,6 +193,77 @@ export const StationModal: React.FC<StationModalProps> = ({
     }
   };
 
+  const [crowdData, setCrowdData] = useState<CrowdPrediction | null>(null);
+  const [crowdLoading, setCrowdLoading] = useState(false);
+
+  const fetchCrowdData = async () => {
+    if (!station) return;
+
+    try {
+      setCrowdLoading(true);
+      const response = await apiService.getCrowdPrediction(station.id);
+
+      if (response.success && response.data) {
+        setCrowdData(response.data);
+      } else {
+        console.error("Failed to fetch crowd data:", response.error);
+      }
+    } catch (error) {
+      console.error("Error fetching crowd data:", error);
+    } finally {
+      setCrowdLoading(false);
+    }
+  };
+
+  const getCrowdLevel = (): "low" | "medium" | "high" => {
+    if (!crowdData) return "medium";
+
+    const level = crowdData.prediction.crowd_level;
+    switch (level) {
+      case "low":
+        return "low";
+      case "medium":
+        return "medium";
+      case "high":
+      case "very_high":
+        return "high";
+      default:
+        return "medium";
+    }
+  };
+
+  const getCrowdBarsToFill = (level: "low" | "medium" | "high"): number => {
+    switch (level) {
+      case "low":
+        return 1;
+      case "medium":
+        return 2;
+      case "high":
+        return 3;
+      default:
+        return 1;
+    }
+  };
+
+  const getConfidenceColor = (confidence: number): string => {
+    if (confidence >= 0.8) return "#10B981"; // Green for high confidence
+    if (confidence >= 0.5) return "#F59E0B"; // Yellow for medium confidence
+    return "#EF4444"; // Red for low confidence
+  };
+
+  const getMethodDescription = (method: string): string => {
+    switch (method) {
+      case "ml_model":
+        return "ML Model";
+      case "historical_data":
+        return "Historical Data";
+      case "time_based_fallback":
+        return "Time-based";
+      default:
+        return "Estimation";
+    }
+  };
+
   const arrivalGroups = groupArrivalsByRoute(arrivals);
 
   if (!station) return null;
@@ -249,101 +277,34 @@ export const StationModal: React.FC<StationModalProps> = ({
     >
       <View style={styles.container}>
         {/* Header */}
-        <View style={[styles.header, { marginBottom: 8 }]}>
-          <View style={styles.stationHeader}>
-            <Text style={styles.stationName}>{station.name}</Text>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <Text
+              style={styles.stationName}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {station.name}
+            </Text>
             {station.routes && sortRoutes(station.routes).length > 0 && (
               <View style={styles.routeSymbols}>
                 {sortRoutes(station.routes).map((route) => (
                   <RouteSymbol
                     key={route.id}
                     routeId={route.short_name}
-                    size={32}
+                    size={24}
                   />
                 ))}
               </View>
             )}
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.closeButton}
+            activeOpacity={0.7}
+          >
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Crowd Prediction Section */}
-        <View style={styles.crowdSection}>
-          <View style={styles.crowdHeader}>
-            <Text style={styles.crowdTitle}>Crowd Prediction</Text>
-            <TouchableOpacity onPress={fetchCrowdPrediction} style={styles.refreshButton}>
-              <Text style={styles.refreshButtonText}>↻</Text>
-            </TouchableOpacity>
-          </View>
-
-          {crowdLoading && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#2193b0" />
-              <Text style={styles.loadingText}>Analyzing crowd patterns...</Text>
-            </View>
-          )}
-
-          {crowdError && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{crowdError}</Text>
-              <TouchableOpacity onPress={fetchCrowdPrediction} style={styles.retryButton}>
-                <Text style={styles.retryButtonText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {!crowdLoading && !crowdError && crowdPrediction && (
-            <View style={styles.crowdCard}>
-              <View style={styles.crowdLevelContainer}>
-                <View style={[styles.crowdIndicator, getCrowdLevelStyle(crowdPrediction.prediction.crowd_level)]}>
-                  <Text style={styles.crowdLevelText}>
-                    {crowdPrediction.prediction.crowd_level.toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.crowdDetails}>
-                  <Text style={styles.confidenceText}>
-                    {Math.round(crowdPrediction.prediction.confidence * 100)}% confidence
-                  </Text>
-                  <Text style={styles.timestampText}>
-                    Updated {new Date(crowdPrediction.prediction.timestamp).toLocaleTimeString()}
-                  </Text>
-                </View>
-              </View>
-              
-              {crowdPrediction.prediction.factors.length > 0 && (
-                <View style={styles.factorsContainer}>
-                  <Text style={styles.factorsTitle}>Key Factors:</Text>
-                  {crowdPrediction.prediction.factors.map((factor, index) => (
-                    <Text key={index} style={styles.factorText}>• {factor}</Text>
-                  ))}
-                </View>
-              )}
-
-              {crowdPrediction.historical_data && (
-                <View style={styles.historicalContainer}>
-                  <Text style={styles.historicalTitle}>Historical Insights:</Text>
-                  <Text style={styles.historicalText}>
-                    Average crowd level: {crowdPrediction.historical_data.average_crowd}/10
-                  </Text>
-                  {crowdPrediction.historical_data.peak_hours.length > 0 && (
-                    <Text style={styles.historicalText}>
-                      Peak hours: {crowdPrediction.historical_data.peak_hours.join(", ")}
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-
-          {!crowdLoading && !crowdError && !crowdPrediction && (
-            <View style={styles.noCrowdContainer}>
-              <Text style={styles.noCrowdText}>
-                Crowd prediction not available for this station
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* Arrivals Section */}
@@ -354,7 +315,7 @@ export const StationModal: React.FC<StationModalProps> = ({
               <Text style={styles.refreshButtonText}>↻</Text>
             </TouchableOpacity>
           </View>
-          <View style={{ marginBottom: 10 }} />
+          <View style={{ marginBottom: 16 }} />
 
           {loading && !refreshing && (
             <View style={styles.loadingContainer}>
@@ -388,10 +349,15 @@ export const StationModal: React.FC<StationModalProps> = ({
               }
             >
               {arrivalGroups.map((group) => (
-                <View key={`${group.route.id}-${group.direction}`} style={styles.routeGroup}>
+                <View
+                  key={`${group.route.id}-${group.direction}`}
+                  style={styles.routeGroup}
+                >
                   <View style={styles.routeHeader}>
                     <RouteSymbol routeId={group.route.short_name} size={28} />
-                    <Text style={styles.directionHeader}>{group.direction}</Text>
+                    <Text style={styles.directionHeader}>
+                      {group.direction}
+                    </Text>
                   </View>
 
                   <View style={styles.arrivalsContainer}>
@@ -414,9 +380,90 @@ export const StationModal: React.FC<StationModalProps> = ({
                             </Text>
                           </View>
                           <View style={styles.arrivalDetails}>
-                            <Text style={[styles.arrivalDirection, { fontSize: 12, opacity: 0.7 }]}>
+                            <Text
+                              style={[
+                                styles.arrivalDirection,
+                                { fontSize: 12, opacity: 0.7 },
+                              ]}
+                            >
                               {arrival.direction}
                             </Text>
+                            {/* Enhanced crowd level indicator */}
+                            <View style={styles.crowdInfoContainer}>
+                              <View style={styles.crowdBars}>
+                                {crowdLoading
+                                  ? // Show loading state
+                                    [1, 2, 3].map((barIndex) => (
+                                      <View
+                                        key={barIndex}
+                                        style={[
+                                          styles.crowdBar,
+                                          styles.barLoading,
+                                        ]}
+                                      />
+                                    ))
+                                  : // Show crowd level bars
+                                    [1, 2, 3].map((barIndex) => {
+                                      const crowdLevel = getCrowdLevel();
+                                      const barsToFill =
+                                        getCrowdBarsToFill(crowdLevel);
+                                      const isFilled = barIndex <= barsToFill;
+
+                                      const getBarColor = (
+                                        index: number,
+                                        crowdLevel: "low" | "medium" | "high"
+                                      ) => {
+                                        switch (crowdLevel) {
+                                          case "low":
+                                            return styles.barGreen;
+                                          case "medium":
+                                            return styles.barYellow;
+                                          case "high":
+                                            return styles.barRed;
+                                          default:
+                                            return styles.barEmpty;
+                                        }
+                                      };
+
+                                      return (
+                                        <View
+                                          key={barIndex}
+                                          style={[
+                                            styles.crowdBar,
+                                            isFilled
+                                              ? getBarColor(
+                                                  barIndex,
+                                                  crowdLevel
+                                                )
+                                              : styles.barEmpty,
+                                          ]}
+                                        />
+                                      );
+                                    })}
+                              </View>
+
+                              {/* Confidence indicator */}
+                              {!crowdLoading && crowdData && (
+                                <View style={styles.confidenceContainer}>
+                                  <View
+                                    style={[
+                                      styles.confidenceDot,
+                                      {
+                                        backgroundColor: getConfidenceColor(
+                                          crowdData.prediction.confidence
+                                        ),
+                                      },
+                                    ]}
+                                  />
+                                  <Text style={styles.confidenceText}>
+                                    {
+                                      crowdData.prediction
+                                        .confidence_description
+                                    }
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
                           </View>
                         </View>
                       ))}
@@ -439,43 +486,50 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     padding: 20,
     paddingTop: 60,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E1E5E9",
   },
-  stationHeader: {
+  headerContent: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    marginRight: 10,
+    flexDirection: "column",
+    marginRight: 16,
   },
   stationName: {
-    fontSize: 24,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "700",
     color: "#1A1A1A",
-    flex: 1,
+    marginBottom: 8,
+    lineHeight: 26,
   },
   routeSymbols: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    rowGap: 10,
-    marginBottom: 6,
+    gap: 6,
   },
   closeButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "#F0F0F0",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   closeButtonText: {
     fontSize: 18,
     color: "#666666",
+    fontWeight: "600",
   },
   stationInfo: {
     padding: 20,
@@ -524,12 +578,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     padding: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#E1E5E9",
   },
   arrivalsTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 18,
+    fontWeight: "600",
     color: "#1A1A1A",
   },
   refreshButton: {
@@ -602,10 +657,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   directionHeader: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#1A1A1A",
-    marginLeft: 12,
+    marginLeft: 10,
   },
   routeName: {
     fontSize: 16,
@@ -615,14 +670,14 @@ const styles = StyleSheet.create({
   },
   arrivalsContainer: {
     backgroundColor: "#F8F9FA",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    padding: 12,
   },
   arrivalItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#E1E5E9",
   },
@@ -630,8 +685,8 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   arrivalMinutes: {
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 16,
+    fontWeight: "600",
     color: "#1A1A1A",
   },
   arrivalStatus: {
@@ -663,101 +718,50 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#1A1A1A",
   },
-  crowdCard: {
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 10,
+
+  crowdInfoContainer: {
+    alignItems: "flex-end",
   },
-  crowdLevelContainer: {
+  crowdBars: {
+    flexDirection: "row",
+    gap: 2,
+    marginTop: 4,
+  },
+  crowdBar: {
+    width: 6,
+    height: 16,
+    borderRadius: 3,
+    marginHorizontal: 1,
+  },
+  barGreen: {
+    backgroundColor: "#10B981", // Green for low crowd
+  },
+  barYellow: {
+    backgroundColor: "#F59E0B", // Yellow for medium crowd
+  },
+  barRed: {
+    backgroundColor: "#EF4444", // Red for high crowd
+  },
+  barEmpty: {
+    backgroundColor: "#E5E7EB",
+  },
+  barLoading: {
+    backgroundColor: "#D1D5DB",
+  },
+  confidenceContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginTop: 4,
   },
-  crowdIndicator: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  crowdLow: {
-    backgroundColor: "#E0F2F7",
-    borderWidth: 1,
-    borderColor: "#A7DBE8",
-  },
-  crowdMedium: {
-    backgroundColor: "#FDE68A",
-    borderWidth: 1,
-    borderColor: "#FCD34D",
-  },
-  crowdHigh: {
-    backgroundColor: "#FCA5A5",
-    borderWidth: 1,
-    borderColor: "#EF4444",
-  },
-  crowdVeryHigh: {
-    backgroundColor: "#FECACA",
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-  },
-  crowdLevelText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1A1A1A",
-  },
-  crowdDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
+  confidenceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 4,
   },
   confidenceText: {
-    fontSize: 14,
+    fontSize: 10,
     color: "#666666",
-  },
-  timestampText: {
-    fontSize: 14,
-    color: "#666666",
-  },
-  factorsContainer: {
-    marginBottom: 10,
-  },
-  factorsTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1A1A1A",
-    marginBottom: 8,
-  },
-  factorText: {
-    fontSize: 14,
-    color: "#666666",
-    marginBottom: 4,
-  },
-  historicalContainer: {
-    marginTop: 10,
-  },
-  historicalTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1A1A1A",
-    marginBottom: 8,
-  },
-  historicalText: {
-    fontSize: 14,
-    color: "#666666",
-    marginBottom: 4,
-  },
-  noCrowdContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 40,
-  },
-  noCrowdText: {
-    fontSize: 16,
-    color: "#666666",
-    textAlign: "center",
+    fontWeight: "500",
   },
 });
