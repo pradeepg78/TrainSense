@@ -28,33 +28,29 @@ class CrowdPredictionService:
         self.mta_api_base = "https://data.ny.gov/resource/iwxf-qfv5.json"
         self.data_points_used = 50000  # Real data count
         
-    def fetch_real_mta_data(self, days_back=30):
-        """Fetch real MTA data from our comprehensive collection"""
-        print(f"📡 Using comprehensive MTA data from our collection...")
+    def fetch_real_mta_data(self, days_back=None):
+        """Fetch real MTA data from our MTA crowd service"""
+        print(f"📡 Using MTA crowd service data...")
         
         try:
-            # Use the comprehensive service to get real data
-            from app.services.mta_comprehensive_service import MTAComprehensiveService
-            comprehensive_service = MTAComprehensiveService()
+            # Use the MTA crowd service to get real data
+            from app.services.mta_crowd_service import MTACrowdService
+            mta_service = MTACrowdService()
             
-            # Get data range
-            earliest_date, latest_date = comprehensive_service.get_data_range()
+            # Get earliest and latest available dates
+            earliest_date = mta_service.get_earliest_available_date()
+            latest_date = mta_service.get_latest_available_date()
+            
             print(f"📅 Available data: {earliest_date.strftime('%Y-%m-%d')} to {latest_date.strftime('%Y-%m-%d')}")
             
-            # Fetch recent data (last 30 days)
-            end_date = latest_date
-            start_date = end_date - timedelta(days=days_back)
-            
-            print(f"📊 Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-            
-            # Fetch data using the comprehensive service
-            raw_data = comprehensive_service.fetch_data_chunk(start_date, end_date, 0)
+            # Download all available hourly data (no limits)
+            raw_data = mta_service.download_all_hourly_data_by_month()
             
             if raw_data:
-                print(f"✅ Fetched {len(raw_data)} real MTA records from our collection")
+                print(f"✅ Fetched {len(raw_data)} real MTA records from hourly API (all available data)")
                 return raw_data
             else:
-                print("❌ No real data available from our collection")
+                print("❌ No real data available from hourly API")
                 return []
                 
         except Exception as e:
@@ -357,13 +353,13 @@ class CrowdPredictionService:
         factors.append(f"ML Model trained on {self.data_points_used:,} real records")
         factors.append(f"Prediction time: {target_time.strftime('%I:%M %p')}")
         factors.append(f"Day: {target_time.strftime('%A')}")
-        factors.append("Real MTA data patterns")
+        factors.append("MTA Hourly Ridership patterns")
         
         return {
             'crowd_level': crowd_level,
             'confidence': round(confidence, 2),
             'confidence_description': confidence_desc,
-            'method': 'Comprehensive MTA Data ML Model',
+            'method': 'MTA Hourly Ridership ML Model',
             'timestamp': target_time.isoformat(),
             'factors': factors,
             'data_points_used': 50000,  # Real data count
@@ -376,5 +372,5 @@ class CrowdPredictionService:
             'average_crowd': 65,
             'peak_hours': ['7:00 AM', '8:00 AM', '5:00 PM', '6:00 PM'],
             'trends': ['Higher on weekdays', 'Lower on weekends', 'Real MTA patterns'],
-            'data_source': 'Comprehensive MTA Data Collection'
+            'data_source': 'MTA Hourly Ridership API'
         }
