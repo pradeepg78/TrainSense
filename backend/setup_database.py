@@ -5,7 +5,6 @@ Script to set up the database and import real MTA data
 import os
 import sys
 import logging
-from datetime import datetime
 
 # Add the backend directory to the Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
