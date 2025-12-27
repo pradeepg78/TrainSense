@@ -30,11 +30,11 @@ FLASK_DEBUG=True
 
 ### 3. Load Initial Data
 
-Run the data loader to populate the database with MTA GTFS data:
+Run the setup script to populate the database with MTA GTFS data:
 
 ```bash
 cd backend
-python load_initial_data.py
+python setup_database.py
 ```
 
 This will:
@@ -117,7 +117,7 @@ The frontend is already configured to connect to the backend at `http://localhos
 ### Backend Issues:
 
 - **MTA API Key**: Make sure you have a valid MTA API key in your `.env` file
-- **Database**: If you get database errors, delete `mta_subway_app.db` and run `load_initial_data.py` again
+- **Database**: If you get database errors, delete the database file and run `setup_database.py` again
 - **Port conflicts**: If port 5001 is busy, change it in `run.py`
 
 ### Frontend Issues:

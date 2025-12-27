@@ -3,7 +3,6 @@
     "name": "train-sense",
     "entryPoint": "./App.tsx",
     "plugins": [
-      "expo-router",
       [
         "expo-splash-screen",
         {
@@ -34,11 +33,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
       "favicon": "./assets/images/favicon.png"
-    },
-    "experiments": {
-      "typedRoutes": true
     }
   }
 }

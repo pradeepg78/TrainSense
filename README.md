@@ -35,7 +35,7 @@ cp .env.example .env
 python setup_database.py
 
 # Start the backend server
-python app.py
+python run.py
 ```
 
 The backend will be available at `http://localhost:5001`
