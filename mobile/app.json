@@ -3,6 +3,7 @@
     "name": "train-sense",
     "entryPoint": "./App.tsx",
     "plugins": [
+      "expo-router",
       [
         "expo-splash-screen",
         {
@@ -10,6 +11,19 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsDownloadToken": "sk.eyJ1IjoiZGFuaWVsam9vbmxlZSIsImEiOiJjbWpvbGg5OG0yMXA1M2RvcGlleXZ1ZWNlIn0.WWymKc26A0WPnbDOsfWIcA",
+          "RNMapboxMapsVersion": "11.0.0"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Show current location on map."
         }
       ]
     ],
@@ -33,7 +47,11 @@
     },
     "web": {
       "bundler": "metro",
+      "output": "static",
       "favicon": "./assets/images/favicon.png"
+    },
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }

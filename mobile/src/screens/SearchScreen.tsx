@@ -1,33 +1,31 @@
-import { Ionicons } from "@expo/vector-icons"; //icons like emojis
+import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  FlatList,
+  Keyboard,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
-
-// services
 import { apiService, Stop, TripPlan } from "../services/api";
 
 const SearchScreen = () => {
-  const [fromLocation, setFromLocation] = useState(""); //variable fromLocation default is empty, use setFromLocation to change
-  const [toLocation, setToLocation] = useState(""); //variable toLocation default is empty string, use setToLocation to change
-  const [searchResults, setSearchResults] = useState<Stop[]>([]); //variable searchResults hold results from backendsearch, empty array bc backend not implemented yet
-  const [recentSearches, setRecentSearches] = useState([
-    //same, recentSearches variable, use setRecentSearches to change; default is just a bunch of defaullt places
-    { from: "Times Square", to: "Brooklyn Bridge", time: "2 hours ago" },
-    { from: "Central Park", to: "JFK Airport", time: "Yesterday" },
-    { from: "Wall Street", to: "Yankee Stadium", time: "2 days ago" },
-  ]);
-  const [loading, setLoading] = useState(false);
+  const [fromLocation, setFromLocation] = useState("");
+  const [toLocation, setToLocation] = useState("");
   const [stops, setStops] = useState<Stop[]>([]);
+  const [filteredStops, setFilteredStops] = useState<Stop[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [activeInput, setActiveInput] = useState<"from" | "to" | null>(null);
+  const [recentSearches, setRecentSearches] = useState([
+    { from: "Times Square", to: "Brooklyn Bridge", time: "2h ago" },
+    { from: "Central Park", to: "JFK Airport", time: "Yesterday" },
+  ]);
 
-  // Load stops on component mount
   useEffect(() => {
     loadStops();
   }, []);
@@ -35,100 +33,55 @@ const SearchScreen = () => {
   const loadStops = async () => {
     setLoading(true);
     try {
-      const response = await apiService.getStops(); // Load all stops
+      const response = await apiService.getStops();
       if (response.success && response.data) {
         setStops(response.data);
-      } else {
-        Alert.alert("Error", "Failed to load stops");
       }
     } catch (error) {
       console.error("Error loading stops:", error);
-      Alert.alert("Error", "Failed to load stops");
     } finally {
       setLoading(false);
     }
   };
 
-  //search function
-  const handleSearch = async () => {
-    //triggered when user presses "Find Routes"
-    if (!fromLocation || !toLocation) {
-      //if either input is blank, throws an error
-      Alert.alert("Error", "Please enter both origin and destination");
-      return;
+  const handleInputChange = (text: string, field: "from" | "to") => {
+    if (field === "from") {
+      setFromLocation(text);
+    } else {
+      setToLocation(text);
     }
 
-    // Find stop IDs for the locations
-    const fromStop = stops.find((stop) =>
-      stop.name.toLowerCase().includes(fromLocation.toLowerCase())
-    );
-    const toStop = stops.find((stop) =>
-      stop.name.toLowerCase().includes(toLocation.toLowerCase())
-    );
-
-    if (!fromStop || !toStop) {
-      Alert.alert(
-        "Error",
-        "Could not find the specified stations. Please check the station names."
+    // Filter stops based on input
+    if (text.length > 0) {
+      const filtered = stops.filter((stop) =>
+        stop.name.toLowerCase().includes(text.toLowerCase())
       );
-      return;
-    }
-
-    // Call the backend API for trip planning
-    try {
-      const response = await apiService.planTrip(fromStop.id, toStop.id);
-      if (response.success && response.data) {
-        const trip: TripPlan = response.data;
-
-        // Show trip plan in an alert
-        const routeDetails =
-          trip.routes.length > 0
-            ? trip.routes
-                .map(
-                  (routeInfo, index) =>
-                    `${index + 1}. Take ${routeInfo.route.short_name} line (${
-                      routeInfo.type
-                    })`
-                )
-                .join("\n")
-            : "No direct route found";
-
-        Alert.alert(
-          "Trip Plan",
-          `From: ${trip.origin.name}\nTo: ${trip.destination.name}\n\nEstimated Time: ${trip.estimated_time}\nTransfers: ${trip.transfers}\n\n${routeDetails}`,
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Start Navigation",
-              onPress: () => {
-                // In a real app, this would start turn-by-turn navigation
-                Alert.alert(
-                  "Navigation",
-                  "Turn-by-turn navigation coming soon!"
-                );
-              },
-            },
-          ]
-        );
-      } else {
-        Alert.alert("Error", "Failed to plan trip");
-      }
-    } catch (error) {
-      console.error("Error planning trip:", error);
-      Alert.alert("Error", "Failed to plan trip");
+      setFilteredStops(filtered.slice(0, 5));
+      setActiveInput(field);
+    } else {
+      setFilteredStops([]);
+      setActiveInput(null);
     }
   };
 
-  //swaps the to, from inputs
+  const handleStopSelect = (stop: Stop) => {
+    if (activeInput === "from") {
+      setFromLocation(stop.name);
+    } else {
+      setToLocation(stop.name);
+    }
+    setFilteredStops([]);
+    setActiveInput(null);
+    Keyboard.dismiss();
+  };
+
   const handleSwapLocations = () => {
     const temp = fromLocation;
-    setFromLocation(toLocation); //example of using the const variables in searchScreen in the beginning to change values
+    setFromLocation(toLocation);
     setToLocation(temp);
   };
 
-  //pretend current location button, doesnt work
   const handleCurrentLocation = (field: "from" | "to") => {
-    // BACKEND TODO: get user's current location
     const location = "Current Location";
     if (field === "from") {
       setFromLocation(location);
@@ -137,204 +90,195 @@ const SearchScreen = () => {
     }
   };
 
-  //fills the inputs in with values from a recent trip, when the user taps
-  const handleRecentSearch = (search: any) => {
-    //search is an object for when we loop through the recentSearches array using a map down below
-    setFromLocation(search.from); //recentSearches has a .from and .to attribute
-    setToLocation(search.to);
-  };
+  const handleSearch = async () => {
+    if (!fromLocation || !toLocation) {
+      Alert.alert("Missing Info", "Please enter both origin and destination");
+      return;
+    }
 
-  const handleStopSelect = (stop: Stop, field: "from" | "to") => {
-    if (field === "from") {
-      setFromLocation(stop.name);
-    } else {
-      setToLocation(stop.name);
+    const fromStop = stops.find((stop) =>
+      stop.name.toLowerCase().includes(fromLocation.toLowerCase())
+    );
+    const toStop = stops.find((stop) =>
+      stop.name.toLowerCase().includes(toLocation.toLowerCase())
+    );
+
+    if (!fromStop || !toStop) {
+      Alert.alert("Not Found", "Could not find the specified stations");
+      return;
+    }
+
+    try {
+      const response = await apiService.planTrip(fromStop.id, toStop.id);
+      if (response.success && response.data) {
+        const trip: TripPlan = response.data;
+        Alert.alert(
+          "Route Found",
+          `From: ${trip.origin.name}\nTo: ${trip.destination.name}\nEstimated Time: ${trip.estimated_time}\nTransfers: ${trip.transfers}`,
+          [{ text: "OK" }]
+        );
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to plan trip");
     }
   };
 
-  const renderStopItem = ({ item }: { item: Stop }) => (
-    <TouchableOpacity
-      style={styles.stopItem}
-      onPress={() => handleStopSelect(item, "to")}
-      activeOpacity={0.7}
-    >
-      <Ionicons name="train" size={20} color="#2193b0" />
-      <View style={styles.stopInfo}>
-        <Text style={styles.stopName}>{item.name}</Text>
-        <Text style={styles.stopId}>ID: {item.id}</Text>
-        {item.routes && item.routes.length > 0 && (
-          <Text style={styles.stopRoutes}>
-            Routes: {item.routes.map((route) => route.short_name).join(", ")}
-          </Text>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+  const handleRecentSearch = (search: any) => {
+    setFromLocation(search.from);
+    setToLocation(search.to);
+  };
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Search Form - modern card with shadow and color */}
-      <View style={styles.searchContainer}>
-        <Text style={styles.sectionTitle}>Plan Your Trip</Text>
-
-        {/* From Input */}
-        <View style={styles.inputContainer}>
-          <View style={styles.inputWrapper}>
-            <Ionicons
-              name="location"
-              size={20}
-              color="#2193b0"
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={styles.textInput}
-              placeholder="From where?"
-              value={fromLocation}
-              onChangeText={setFromLocation}
-              placeholderTextColor="#999"
-            />
-            <TouchableOpacity
-              onPress={() => handleCurrentLocation("from")}
-              style={styles.locationButton}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="locate" size={18} color="#2193b0" />
-            </TouchableOpacity>
-          </View>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Plan Trip</Text>
         </View>
 
-        {/* Swap Button */}
-        <TouchableOpacity
-          style={styles.swapButton}
-          onPress={handleSwapLocations}
-          activeOpacity={0.7}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Ionicons name="swap-vertical" size={24} color="#2193b0" />
-        </TouchableOpacity>
-
-        {/* To Input */}
-        <View style={styles.inputContainer}>
-          <View style={styles.inputWrapper}>
-            <Ionicons
-              name="flag"
-              size={20}
-              color="#FF6B6B"
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={styles.textInput}
-              placeholder="To where?"
-              value={toLocation}
-              onChangeText={setToLocation}
-              placeholderTextColor="#999"
-            />
-            <TouchableOpacity
-              onPress={() => handleCurrentLocation("to")}
-              style={styles.locationButton}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="locate" size={18} color="#2193b0" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Search Button - modern color and shadow */}
-        <TouchableOpacity
-          style={styles.searchButton}
-          onPress={handleSearch}
-          activeOpacity={0.85}
-        >
-          <Ionicons
-            name="search"
-            size={20}
-            color="#FFFFFF"
-            style={styles.searchIcon}
-          />
-          <Text style={styles.searchButtonText}>Find Routes</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Available Stops */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Available Stops</Text>
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <Ionicons name="refresh" size={24} color="#B0BEC5" />
-            <Text style={styles.loadingText}>Loading stops...</Text>
-          </View>
-        ) : stops.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="train-outline" size={48} color="#B0BEC5" />
-            <Text style={styles.emptyStateText}>No stops available</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Check your connection and try again
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={stops.slice(0, 20)} // Show first 20 stops
-            renderItem={renderStopItem}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            style={styles.stopsList}
-          />
-        )}
-      </View>
-
-      {/* Quick Options - modern grid, more color and spacing */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Options</Text>
-        <View style={styles.quickOptionsGrid}>
-          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
-            <Ionicons name="time" size={24} color="#2193b0" />
-            <Text style={styles.quickOptionText}>Fastest Route</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
-            <Ionicons name="walk" size={24} color="#2193b0" />
-            <Text style={styles.quickOptionText}>Least Walking</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
-            <Ionicons name="cash" size={24} color="#2193b0" />
-            <Text style={styles.quickOptionText}>Cheapest</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickOption} activeOpacity={0.8}>
-            <Ionicons name="accessibility" size={24} color="#2193b0" />
-            <Text style={styles.quickOptionText}>Accessible</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Recent Searches - card-based, with modern color and spacing */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Searches</Text>
-        {recentSearches.map((search, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.recentSearchCard}
-            onPress={() => handleRecentSearch(search)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.recentSearchContent}>
-              <View style={styles.recentSearchRoute}>
-                <Text style={styles.recentSearchFrom}>{search.from}</Text>
-                <Ionicons
-                  name="arrow-forward"
-                  size={16}
-                  color="#90A4AE"
-                  style={styles.arrowIcon}
-                />
-                <Text style={styles.recentSearchTo}>{search.to}</Text>
+          {/* Search Card */}
+          <View style={styles.searchCard}>
+            {/* From Input */}
+            <View style={styles.inputRow}>
+              <View style={styles.inputDot}>
+                <View style={styles.dotInner} />
               </View>
-              <Text style={styles.recentSearchTime}>{search.time}</Text>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="From"
+                  value={fromLocation}
+                  onChangeText={(text) => handleInputChange(text, "from")}
+                  onFocus={() => setActiveInput("from")}
+                  placeholderTextColor="#999"
+                />
+                <TouchableOpacity
+                  style={styles.locationButton}
+                  onPress={() => handleCurrentLocation("from")}
+                >
+                  <Ionicons name="locate" size={18} color="#1a1a1a" />
+                </TouchableOpacity>
+              </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#B0BEC5" />
-          </TouchableOpacity>
-        ))}
-      </View>
 
-      {/* Extra bottom padding for scrollable content */}
-      <View style={styles.bottomPadding} />
-    </ScrollView>
+            {/* Connector Line */}
+            <View style={styles.connectorContainer}>
+              <View style={styles.connectorLine} />
+              <TouchableOpacity
+                style={styles.swapButton}
+                onPress={handleSwapLocations}
+              >
+                <Ionicons name="swap-vertical" size={18} color="#1a1a1a" />
+              </TouchableOpacity>
+            </View>
+
+            {/* To Input */}
+            <View style={styles.inputRow}>
+              <View style={[styles.inputDot, styles.inputDotDestination]}>
+                <View style={styles.dotInnerDestination} />
+              </View>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="To"
+                  value={toLocation}
+                  onChangeText={(text) => handleInputChange(text, "to")}
+                  onFocus={() => setActiveInput("to")}
+                  placeholderTextColor="#999"
+                />
+              </View>
+            </View>
+
+            {/* Autocomplete Suggestions */}
+            {filteredStops.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                {filteredStops.map((stop) => (
+                  <TouchableOpacity
+                    key={stop.id}
+                    style={styles.suggestionItem}
+                    onPress={() => handleStopSelect(stop)}
+                  >
+                    <Ionicons name="train-outline" size={16} color="#666" />
+                    <Text style={styles.suggestionText}>{stop.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Search Button */}
+            <TouchableOpacity
+              style={styles.searchButton}
+              onPress={handleSearch}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.searchButtonText}>Find Route</Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Recent Searches */}
+          {recentSearches.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="time-outline" size={16} color="#1a1a1a" />
+                <Text style={styles.sectionTitle}>Recent</Text>
+              </View>
+              {recentSearches.map((search, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.recentCard}
+                  onPress={() => handleRecentSearch(search)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.recentRoute}>
+                    <Text style={styles.recentFrom}>{search.from}</Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={14}
+                      color="#ccc"
+                      style={styles.recentArrow}
+                    />
+                    <Text style={styles.recentTo}>{search.to}</Text>
+                  </View>
+                  <Text style={styles.recentTime}>{search.time}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Quick Actions */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="flash-outline" size={16} color="#1a1a1a" />
+              <Text style={styles.sectionTitle}>Quick Actions</Text>
+            </View>
+            <View style={styles.quickActionsGrid}>
+              <TouchableOpacity style={styles.quickAction} activeOpacity={0.7}>
+                <Ionicons name="home-outline" size={22} color="#1a1a1a" />
+                <Text style={styles.quickActionText}>Home</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickAction} activeOpacity={0.7}>
+                <Ionicons name="briefcase-outline" size={22} color="#1a1a1a" />
+                <Text style={styles.quickActionText}>Work</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickAction} activeOpacity={0.7}>
+                <Ionicons name="airplane-outline" size={22} color="#1a1a1a" />
+                <Text style={styles.quickActionText}>Airport</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Bottom spacing for tab bar */}
+          <View style={styles.bottomSpacer} />
+        </ScrollView>
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -343,222 +287,207 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F8F9FA",
   },
-  searchContainer: {
-    marginHorizontal: 18,
-    marginTop: 18,
-    marginBottom: 18,
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 18,
-    shadowColor: "#2193b0",
-    shadowOffset: { width: 0, height: 2 },
+  header: {
+    paddingTop: Platform.OS === "ios" ? 60 : 48,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    backgroundColor: "#F8F9FA",
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    letterSpacing: -0.5,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+  },
+  searchCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 4,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#2193b0",
-    marginBottom: 10,
-    letterSpacing: 0.3,
-  },
-  inputContainer: {
-    marginBottom: 12,
-  },
-  inputWrapper: {
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F1F8FF",
+    gap: 14,
+  },
+  inputDot: {
+    width: 24,
+    height: 24,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    shadowColor: "#2193b0",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    backgroundColor: "rgba(26, 26, 26, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  inputIcon: {
-    marginRight: 8,
+  inputDotDestination: {
+    backgroundColor: "rgba(26, 26, 26, 0.08)",
   },
-  textInput: {
+  dotInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#1a1a1a",
+  },
+  dotInnerDestination: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: "#1a1a1a",
+  },
+  inputContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+  },
+  input: {
     flex: 1,
     fontSize: 16,
-    color: "#333",
-    paddingVertical: 4,
+    fontWeight: "500",
+    color: "#1a1a1a",
+    paddingVertical: 14,
   },
   locationButton: {
-    marginLeft: 8,
-    padding: 4,
-    borderRadius: 8,
-    backgroundColor: "#E3F2FD",
+    padding: 6,
+  },
+  connectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 11,
+    marginVertical: 4,
+  },
+  connectorLine: {
+    width: 2,
+    height: 24,
+    backgroundColor: "rgba(26, 26, 26, 0.1)",
+    borderRadius: 1,
   },
   swapButton: {
-    alignSelf: "center",
-    marginVertical: 6,
-    backgroundColor: "#E3F2FD",
-    borderRadius: 16,
-    padding: 6,
-    shadowColor: "#2193b0",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    marginLeft: "auto",
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#F8F9FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  suggestionsContainer: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0, 0, 0, 0.05)",
+    paddingTop: 12,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  suggestionText: {
+    fontSize: 15,
+    color: "#1a1a1a",
   },
   searchButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#2193b0",
+    gap: 8,
+    backgroundColor: "#1a1a1a",
     borderRadius: 14,
-    paddingVertical: 14,
-    marginTop: 10,
-    shadowColor: "#2193b0",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  searchIcon: {
-    marginRight: 8,
+    paddingVertical: 16,
+    marginTop: 20,
   },
   searchButtonText: {
-    color: "#fff",
     fontSize: 16,
-    fontWeight: "bold",
-    letterSpacing: 0.2,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   section: {
-    marginHorizontal: 18,
-    marginBottom: 18,
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 16,
-    shadowColor: "#2193b0",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 24,
   },
-  quickOptionsGrid: {
+  sectionHeader: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
-  quickOption: {
-    width: "47%",
-    backgroundColor: "#F1F8FF",
-    borderRadius: 14,
     alignItems: "center",
-    paddingVertical: 18,
+    gap: 8,
     marginBottom: 12,
-    shadowColor: "#2193b0",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingHorizontal: 4,
   },
-  quickOptionText: {
-    marginTop: 8,
+  sectionTitle: {
     fontSize: 15,
-    color: "#2193b0",
     fontWeight: "600",
+    color: "#1a1a1a",
     letterSpacing: 0.2,
   },
-  recentSearchCard: {
-    backgroundColor: "#F1F8FF",
-    borderRadius: 12,
-    padding: 14,
+  recentCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 16,
     marginBottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    shadowColor: "#2193b0",
-    shadowOffset: { width: 0, height: 1 },
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  recentSearchContent: {
-    flex: 1,
-  },
-  recentSearchRoute: {
+  recentRoute: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  recentSearchFrom: {
+  recentFrom: {
     fontSize: 15,
-    color: "#2193b0",
-    fontWeight: "bold",
+    fontWeight: "600",
+    color: "#1a1a1a",
   },
-  arrowIcon: {
-    marginHorizontal: 6,
+  recentArrow: {
+    marginHorizontal: 8,
   },
-  recentSearchTo: {
+  recentTo: {
     fontSize: 15,
-    color: "#FF6B6B",
-    fontWeight: "bold",
+    fontWeight: "600",
+    color: "#1a1a1a",
   },
-  recentSearchTime: {
+  recentTime: {
     fontSize: 13,
-    color: "#90A4AE",
+    color: "#999",
   },
-  stopsList: {
-    marginTop: 10,
-  },
-  stopItem: {
+  quickActionsGrid: {
     flexDirection: "row",
-    alignItems: "center",
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
+    gap: 10,
   },
-  stopInfo: {
+  quickAction: {
     flex: 1,
-    marginLeft: 10,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingVertical: 20,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  stopName: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#2193b0",
-  },
-  stopId: {
-    fontSize: 14,
-    color: "#90A4AE",
-  },
-  stopRoutes: {
-    fontSize: 12,
+  quickActionText: {
+    fontSize: 13,
+    fontWeight: "500",
     color: "#666",
-    marginTop: 2,
+    marginTop: 8,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#2193b0",
-    marginTop: 10,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyStateText: {
-    fontSize: 18,
-    color: "#2193b0",
-    marginBottom: 10,
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: "#90A4AE",
-  },
-  bottomPadding: {
-    height: 20,
+  bottomSpacer: {
+    height: 120,
   },
 });
 

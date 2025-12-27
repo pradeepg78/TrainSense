@@ -3,76 +3,112 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
+import { Platform, View } from "react-native";
 
-import HomeScreen from "./src/screens/HomeScreen";
 import MapScreen from "./src/screens/MapScreen";
 import RouteScreen from "./src/screens/RouteScreen";
 import SearchScreen from "./src/screens/SearchScreen";
 
 const Tab = createBottomTabNavigator();
 
+// Custom floating tab bar with minimalist design
+function MinimalTabBar({ state, descriptors, navigation }: any) {
+  return (
+    <View
+      style={{
+        position: "absolute",
+        bottom: Platform.OS === "ios" ? 32 : 24,
+        left: 24,
+        right: 24,
+        backgroundColor: "rgba(18, 18, 18, 0.94)",
+        borderRadius: 24,
+        flexDirection: "row",
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 24,
+        elevation: 12,
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.06)",
+      }}
+    >
+      {state.routes.map((route: any, index: number) => {
+        const isFocused = state.index === index;
+
+        const iconName = (() => {
+          switch (route.name) {
+            case "Map":
+              return isFocused ? "navigate" : "navigate-outline";
+            case "Lines":
+              return isFocused ? "git-branch" : "git-branch-outline";
+            case "Search":
+              return isFocused ? "search" : "search-outline";
+            default:
+              return "help-outline";
+          }
+        })();
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: "tabPress",
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
+        return (
+          <View
+            key={route.key}
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: isFocused
+                  ? "rgba(255, 255, 255, 0.12)"
+                  : "transparent",
+                borderRadius: 14,
+                paddingVertical: 10,
+                paddingHorizontal: 24,
+              }}
+            >
+              <Ionicons
+                name={iconName as keyof typeof Ionicons.glyphMap}
+                size={24}
+                color={isFocused ? "#FFFFFF" : "rgba(255, 255, 255, 0.4)"}
+                onPress={onPress}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function App() {
   return (
     <NavigationContainer>
-      <StatusBar style="light" backgroundColor="#0066CC" />
+      <StatusBar style="dark" />
       <Tab.Navigator
-        screenOptions={({ route }) => ({
-          tabBarIcon: ({ focused, color, size }) => {
-            let iconName: keyof typeof Ionicons.glyphMap;
-
-            if (route.name === "Home") {
-              iconName = focused ? "home" : "home-outline";
-            } else if (route.name === "Map") {
-              iconName = focused ? "map" : "map-outline";
-            } else if (route.name === "Routes") {
-              iconName = focused ? "train" : "train-outline";
-            } else if (route.name === "Search") {
-              iconName = focused ? "search" : "search-outline";
-            } else {
-              iconName = "help-outline";
-            }
-
-            return <Ionicons name={iconName} size={size} color={color} />;
-          },
-          tabBarActiveTintColor: "#0066CC",
-          tabBarInactiveTintColor: "#666",
-          tabBarStyle: {
-            backgroundColor: "#FFFFFF",
-            borderTopWidth: 1,
-            borderTopColor: "#E5E5E5",
-            paddingBottom: 5,
-            paddingTop: 5,
-            height: 60,
-          },
-          headerStyle: {
-            backgroundColor: "#2193b0",
-          },
-          headerTintColor: "#FFFFFF",
-          headerTitleStyle: {
-            fontWeight: "bold",
-          },
-        })}
+        initialRouteName="Map"
+        tabBar={(props) => <MinimalTabBar {...props} />}
+        screenOptions={{
+          headerShown: false,
+        }}
       >
-        <Tab.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ title: "Home", headerShown: false }}
-        />
-        <Tab.Screen
-          name="Map"
-          component={MapScreen}
-          options={{ title: "Live Map" }}
-        />
-        <Tab.Screen
-          name="Routes"
-          component={RouteScreen}
-          options={{ title: "My Routes" }}
-        />
-        <Tab.Screen
-          name="Search"
-          component={SearchScreen}
-          options={{ title: "Search" }}
-        />
+        <Tab.Screen name="Map" component={MapScreen} />
+        <Tab.Screen name="Lines" component={RouteScreen} />
+        <Tab.Screen name="Search" component={SearchScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   );
