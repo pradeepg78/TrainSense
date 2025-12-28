@@ -1,7 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
-import Mapbox, { Camera, LocationPuck, MapView } from "@rnmapbox/maps";
+import Mapbox, {
+  Camera,
+  CircleLayer,
+  LineLayer,
+  LocationPuck,
+  MapView,
+  ShapeSource,
+} from "@rnmapbox/maps";
 import Constants from "expo-constants";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   Platform,
@@ -29,33 +36,201 @@ const MANHATTAN_CENTER = {
   longitude: -73.9855,
 };
 
+// Import local subway lines and stops data
+import subwayLinesData from '../assets/subway-lines.json';
+import subwayStopsData from '../assets/subway-stops.json';
+
+// Fallback URL - NY State Open Data
+// const NYC_SUBWAY_LINES_URL = "https://data.ny.gov/api/geospatial/vtcn-vhd8?method=export&format=GeoJSON";
+
+// Color map based on route symbol (like the CodePen)
+const COLOR_MAP: { [key: string]: string } = {
+  A: "#0039A6",
+  B: "#FF6319",
+  G: "#6CBE45",
+  J: "#996633",
+  L: "#A7A9AC",
+  N: "#FCCC0A",
+  S: "#808183",
+  "1": "#EE352E",
+  "4": "#00933C",
+  "7": "#B933AD"
+};
+
+// Get color from route name (e.g., "A-C-E" -> "A" -> blue)
+const getLineColor = (name: string): string => {
+  if (!name) return "#999999";
+  const firstRoute = name.split("-")[0];
+  // Check direct match first
+  if (COLOR_MAP[firstRoute]) return COLOR_MAP[firstRoute];
+  // Check if it's a number route
+  if (["1", "2", "3"].includes(firstRoute)) return COLOR_MAP["1"];
+  if (["4", "5", "6"].includes(firstRoute)) return COLOR_MAP["4"];
+  if (["7"].includes(firstRoute)) return COLOR_MAP["7"];
+  if (["A", "C", "E"].includes(firstRoute)) return COLOR_MAP["A"];
+  if (["B", "D", "F", "M"].includes(firstRoute)) return COLOR_MAP["B"];
+  if (["N", "Q", "R", "W"].includes(firstRoute)) return COLOR_MAP["N"];
+  if (["J", "Z"].includes(firstRoute)) return COLOR_MAP["J"];
+  return "#999999";
+};
+
+interface TrunkSegment {
+  color: string;
+  route: string;
+  polyline: { latitude: number; longitude: number }[];
+}
+
 const MapScreen = () => {
   const [zoomLevel, setZoomLevel] = useState(12);
-  const [stations, setStations] = useState<MapStation[]>([]);
   const [selectedStation, setSelectedStation] = useState<Stop | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showStationModal, setShowStationModal] = useState(false);
+  const [subwayLinesGeoJSON, setSubwayLinesGeoJSON] = useState<any>(null);
+  const [subwayStopsGeoJSON, setSubwayStopsGeoJSON] = useState<any>(null);
 
   const cameraRef = useRef<Camera>(null);
 
-  // Load stations
+  // Load subway stops from local JSON file
   useEffect(() => {
-    loadStations();
+    function loadSubwayStops() {
+      try {
+        const stopsData = subwayStopsData as any;
+        if (stopsData && stopsData.features) {
+          // Group stops by complex_id to avoid duplicates
+          const stopsByComplex: { [key: string]: any } = {};
+          
+          stopsData.features.forEach((feature: any) => {
+            const complexId = feature.properties?.complex_id || feature.properties?.station_id || 'unknown';
+            if (!stopsByComplex[complexId]) {
+              // Use the first stop of each complex as the representative
+              // Store gtfs_stop_id for API calls
+              stopsByComplex[complexId] = {
+                ...feature,
+                properties: {
+                  ...feature.properties,
+                  id: complexId,
+                  name: feature.properties?.stop_name || 'Unknown Station',
+                  gtfs_stop_id: feature.properties?.gtfs_stop_id || feature.properties?.id || complexId,
+                  // Collect all routes for this complex
+                  routes: feature.properties?.daytime_routes || ''
+                }
+              };
+            } else {
+              // Merge routes if multiple stops in same complex
+              const existingRoutes = stopsByComplex[complexId].properties.daytime_routes || '';
+              const newRoutes = feature.properties?.daytime_routes || '';
+              const allRoutes = new Set([...existingRoutes.split(' '), ...newRoutes.split(' ')].filter(r => r));
+              stopsByComplex[complexId].properties.daytime_routes = Array.from(allRoutes).join(' ');
+              // Keep the first gtfs_stop_id (or update if this one is better)
+              if (!stopsByComplex[complexId].properties.gtfs_stop_id && feature.properties?.gtfs_stop_id) {
+                stopsByComplex[complexId].properties.gtfs_stop_id = feature.properties.gtfs_stop_id;
+              }
+            }
+          });
+
+          // Convert to GeoJSON FeatureCollection
+          const processedStops = {
+            type: "FeatureCollection" as const,
+            features: Object.values(stopsByComplex)
+          };
+
+          setSubwayStopsGeoJSON(processedStops);
+          console.log("Loaded", processedStops.features.length, "stations from subway-stops.json");
+        }
+      } catch (e) {
+        console.error("Error loading subway stops from JSON:", e);
+      }
+    }
+    loadSubwayStops();
   }, []);
 
-  const loadStations = async () => {
-    setIsLoading(true);
-    try {
-      const response = await apiService.getMapStations();
-      if (response.success && response.data) {
-        setStations(response.data);
+  // Load subway lines from local JSON file
+  useEffect(() => {
+    function loadSubwayLines() {
+      try {
+        const data = subwayLinesData as any;
+        if (data && data.features) {
+          // Add color property to each feature based on its service (route letter/number)
+          const coloredFeatures = data.features.map((feature: any) => ({
+            ...feature,
+            properties: {
+              ...feature.properties,
+              color: getLineColor(feature.properties?.service || feature.properties?.service_name || "")
+            }
+          }));
+          
+          setSubwayLinesGeoJSON({
+            type: "FeatureCollection",
+            features: coloredFeatures
+          });
+          console.log("Loaded subway lines from local JSON:", coloredFeatures.length, "segments");
+        }
+      } catch (e) {
+        console.error("Error loading subway lines from local JSON:", e);
+        // Fallback to backend if local file fails
+        try {
+          fetch("http://127.0.0.1:5001/api/trunk-shapes")
+            .then(response => response.json())
+            .then(data => {
+              if (data.success && data.data) {
+                // Convert backend format to GeoJSON
+                const features = data.data.map((segment: TrunkSegment) => ({
+                  type: "Feature",
+                  properties: { color: segment.color, name: segment.route },
+                  geometry: {
+                    type: "LineString",
+                    coordinates: segment.polyline.map(p => [p.longitude, p.latitude])
+                  }
+                }));
+                setSubwayLinesGeoJSON({ type: "FeatureCollection", features });
+              }
+            })
+            .catch(e2 => {
+              console.log("Could not fetch trunk shapes from backend either");
+            });
+        } catch (e2) {
+          console.log("Could not fetch trunk shapes from backend");
+        }
       }
-    } catch (error) {
-      console.error("Error loading stations:", error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+    loadSubwayLines();
+  }, []);
+
+
+  // Get unique colors for line layers
+  const uniqueColors = useMemo(() => {
+    if (!subwayLinesGeoJSON?.features) return [];
+    const colors = new Set<string>();
+    subwayLinesGeoJSON.features.forEach((f: any) => {
+      if (f.properties?.color) colors.add(f.properties.color);
+    });
+    return Array.from(colors);
+  }, [subwayLinesGeoJSON]);
+
+  // Process stops GeoJSON to determine transfer stations
+  const processedStopsGeoJSON = useMemo(() => {
+    if (!subwayStopsGeoJSON) return null;
+
+    const features = subwayStopsGeoJSON.features.map((feature: any) => {
+      const routes = feature.properties?.daytime_routes?.split(' ') || [];
+      const routeCount = new Set(routes.filter((r: string) => r && r.trim())).size;
+      const isTransfer = routeCount >= 3;
+
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          isTransfer,
+          routeCount
+        }
+      };
+    });
+
+    return {
+      type: "FeatureCollection" as const,
+      features
+    };
+  }, [subwayStopsGeoJSON]);
 
   const handleLocationPress = () => {
     cameraRef.current?.setCamera({
@@ -94,8 +269,7 @@ const MapScreen = () => {
     <View style={styles.container}>
       <MapView
         style={styles.map}
-        // Use Mapbox Standard style which includes transit
-        styleURL="mapbox://styles/mapbox/standard"
+        styleURL="mapbox://styles/mapbox/light-v11"
         onRegionDidChange={onRegionChange}
         logoEnabled={false}
         attributionEnabled={false}
@@ -109,6 +283,70 @@ const MapScreen = () => {
             zoomLevel: 12,
           }}
         />
+
+        {/* Subway Lines - render from NYC Open Data GeoJSON */}
+        {subwayLinesGeoJSON && subwayLinesGeoJSON.features.length > 0 && (
+          <ShapeSource id="subway-lines" shape={subwayLinesGeoJSON}>
+            {uniqueColors.map((color) => (
+              <LineLayer
+                key={`line-${color}`}
+                id={`line-${color}`}
+                filter={['==', ['get', 'color'], color]}
+                style={{
+                  lineColor: color,
+                  lineWidth: 3,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                }}
+              />
+            ))}
+          </ShapeSource>
+        )}
+
+        {/* Station Markers - from subway-stops.json */}
+        {processedStopsGeoJSON && processedStopsGeoJSON.features.length > 0 && (
+          <ShapeSource 
+            id="stations" 
+            shape={processedStopsGeoJSON}
+            onPress={(e) => {
+              const feature = e.features?.[0];
+              if (feature && feature.geometry.type === 'Point') {
+                const props = feature.properties;
+              const coords = feature.geometry.coordinates as [number, number];
+              const routes = (props?.daytime_routes || '').split(' ').filter((r: string) => r && r.trim());
+              
+              // Use gtfs_stop_id for API calls, but prefer the first stop in complex
+              const stopId = props?.gtfs_stop_id || props?.id || props?.complex_id || props?.station_id || '';
+              
+              setSelectedStation({
+                id: stopId,
+                name: props?.name || props?.stop_name || 'Unknown Station',
+                latitude: coords[1],
+                longitude: coords[0],
+                routes: routes.map((routeId: string) => ({
+                  id: routeId,
+                  short_name: routeId,
+                  long_name: `${routeId} Train`,
+                  route_color: getLineColor(routeId),
+                  text_color: '#FFFFFF'
+                }))
+              });
+              setShowStationModal(true);
+              }
+            }}
+          >
+            {/* All stations - same small size */}
+            <CircleLayer
+              id="stations-all"
+              style={{
+                circleRadius: 2.5,
+                circleColor: '#FFFFFF',
+                circleStrokeColor: '#2C2C2C',
+                circleStrokeWidth: 1,
+              }}
+            />
+          </ShapeSource>
+        )}
         
         {/* Show user location */}
         <LocationPuck
@@ -157,9 +395,9 @@ const MapScreen = () => {
       )}
 
       {/* Station Count Badge */}
-      {!isLoading && stations.length > 0 && (
+      {!isLoading && processedStopsGeoJSON && processedStopsGeoJSON.features.length > 0 && (
         <View style={styles.stationBadge}>
-          <Text style={styles.stationBadgeText}>{stations.length} stations</Text>
+          <Text style={styles.stationBadgeText}>{processedStopsGeoJSON.features.length} stations</Text>
         </View>
       )}
 

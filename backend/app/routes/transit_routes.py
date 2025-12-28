@@ -750,7 +750,11 @@ def get_trunk_shapes():
         'lexington_express': ['4', '5'],
         'lexington_local': ['6'],
         'seventh_ave_express': ['2', '3'],
-        'seventh_ave_local': ['1']
+        'seventh_ave_local': ['1'],
+        'sixth_ave': ['B', 'D', 'F', 'M'],  # Make sure B is here
+        'shuttle_42': ['S'],  # 42nd St Shuttle
+        'shuttle_franklin': ['S'],  # Franklin Ave Shuttle  
+        'shuttle_rockaway': ['S'],  # Rockaway Shuttle
     }
 
     # 1. Map route_id -> color
