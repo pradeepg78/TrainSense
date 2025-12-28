@@ -18,7 +18,7 @@ import {
   View,
 } from "react-native";
 import { StationModal } from "../components/StationModal";
-import { apiService, MapStation, Stop } from "../services/api";
+import { Stop } from "../services/api";
 
 const { width, height } = Dimensions.get("window");
 
@@ -335,14 +335,14 @@ const MapScreen = () => {
               }
             }}
           >
-            {/* All stations - same small size */}
+            {/* All stations - uniform small size */}
             <CircleLayer
               id="stations-all"
               style={{
-                circleRadius: 2.5,
+                circleRadius: 2,
                 circleColor: '#FFFFFF',
-                circleStrokeColor: '#2C2C2C',
-                circleStrokeWidth: 1,
+                circleStrokeColor: '#1a1a1a',
+                circleStrokeWidth: 0.8,
               }}
             />
           </ShapeSource>

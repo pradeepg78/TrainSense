@@ -167,15 +167,30 @@ export const StationModal: React.FC<StationModalProps> = ({
   };
 
   const getStatusColor = (status: string): string => {
+    // Minimal black/white scheme - use grays
     switch (status.toLowerCase()) {
       case "arriving":
-        return "#FF4444";
+        return "#1a1a1a";
       case "approaching":
-        return "#FF8800";
+        return "#3a3a3a";
       case "on time":
-        return "#00AA00";
+        return "#1a1a1a";
       default:
         return "#666666";
+    }
+  };
+
+  const getStatusBgColor = (status: string): string => {
+    // Light gray backgrounds for minimal look
+    switch (status.toLowerCase()) {
+      case "arriving":
+        return "#E5E5E5";
+      case "approaching":
+        return "#E5E5E5";
+      case "on time":
+        return "#E5E5E5";
+      default:
+        return "#E5E5E5";
     }
   };
 
@@ -208,7 +223,7 @@ export const StationModal: React.FC<StationModalProps> = ({
                       <RouteSymbol
                         key={route.id}
                         routeId={route.short_name}
-                        size={28}
+                        size={24}
                       />
                     ))}
                   </View>
@@ -231,7 +246,7 @@ export const StationModal: React.FC<StationModalProps> = ({
 
             {loading && !refreshing && (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#2193b0" />
+                <ActivityIndicator size="large" color="#1a1a1a" />
                 <Text style={styles.loadingText}>Loading arrivals...</Text>
               </View>
             )}
@@ -258,22 +273,24 @@ export const StationModal: React.FC<StationModalProps> = ({
                 {arrivalGroups.map((group) => (
                   <View key={`${group.route.id}-${group.direction}`} style={styles.routeGroup}>
                     <View style={styles.routeHeader}>
-                      <RouteSymbol routeId={group.route.short_name} size={24} />
+                      <RouteSymbol routeId={group.route.short_name} size={22} />
                       <Text style={styles.directionHeader}>{group.direction}</Text>
                     </View>
 
                     <View style={styles.arrivalsContainer}>
                       {group.arrivals
                         .sort((a, b) => a.minutes - b.minutes)
-                        .slice(0, 5)
+                        .slice(0, 4)
                         .map((arrival, index) => (
                           <View key={index} style={styles.arrivalItem}>
                             <Text style={styles.arrivalMinutes}>
                               {formatArrivalTime(arrival.minutes)}
                             </Text>
-                            <Text style={[styles.arrivalStatus, { color: getStatusColor(arrival.status) }]}>
-                              {arrival.status}
-                            </Text>
+                            <View style={[styles.statusBadge, { backgroundColor: getStatusBgColor(arrival.status) }]}>
+                              <Text style={[styles.arrivalStatus, { color: getStatusColor(arrival.status) }]}>
+                                {arrival.status}
+                              </Text>
+                            </View>
                           </View>
                         ))}
                     </View>
@@ -291,7 +308,7 @@ export const StationModal: React.FC<StationModalProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#f5f5f5",
   },
   scrollView: {
     flex: 1,
@@ -299,13 +316,13 @@ const styles = StyleSheet.create({
   headerCard: {
     marginHorizontal: 18,
     marginTop: 20,
-    marginBottom: 18,
+    marginBottom: 12,
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
-    shadowColor: "#2193b0",
+    borderRadius: 14,
+    padding: 18,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
   },
@@ -316,13 +333,14 @@ const styles = StyleSheet.create({
   },
   stationHeader: {
     flex: 1,
-    marginRight: 10,
+    marginRight: 12,
   },
   stationName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
-    color: "#1A1A1A",
-    marginBottom: 8,
+    color: "#1a1a1a",
+    marginBottom: 10,
+    letterSpacing: 0.2,
   },
   routeSymbols: {
     flexDirection: "row",
@@ -331,27 +349,27 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F1F8FF",
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#F5F5F5",
     justifyContent: "center",
     alignItems: "center",
   },
   closeButtonText: {
-    fontSize: 18,
-    color: "#2193b0",
+    fontSize: 16,
+    color: "#1a1a1a",
     fontWeight: "600",
   },
   arrivalsCard: {
     marginHorizontal: 18,
-    marginBottom: 18,
+    marginBottom: 20,
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
-    shadowColor: "#2193b0",
+    borderRadius: 14,
+    padding: 18,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
   },
@@ -359,24 +377,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   arrivalsTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "bold",
-    color: "#2193b0",
+    color: "#1a1a1a",
     letterSpacing: 0.3,
   },
   refreshButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#2193b0",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#1a1a1a",
     justifyContent: "center",
     alignItems: "center",
   },
   refreshButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#FFFFFF",
     fontWeight: "600",
   },
@@ -398,7 +416,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 15,
-    color: "#FF4444",
+    color: "#1a1a1a",
     textAlign: "center",
     marginBottom: 20,
     fontWeight: "500",
@@ -406,7 +424,7 @@ const styles = StyleSheet.create({
   retryButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
-    backgroundColor: "#2193b0",
+    backgroundColor: "#1a1a1a",
     borderRadius: 10,
   },
   retryButtonText: {
@@ -426,42 +444,49 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   arrivalsList: {
-    gap: 16,
+    gap: 14,
   },
   routeGroup: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   routeHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   directionHeader: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#1A1A1A",
-    marginLeft: 10,
+    color: "#1a1a1a",
+    marginLeft: 8,
   },
   arrivalsContainer: {
-    backgroundColor: "#F1F8FF",
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: "#F5F5F5",
+    borderRadius: 10,
+    padding: 10,
   },
   arrivalItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#E1E5E9",
+    borderBottomColor: "rgba(0, 0, 0, 0.08)",
   },
   arrivalMinutes: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "bold",
-    color: "#1A1A1A",
+    color: "#1a1a1a",
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "#E5E5E5",
   },
   arrivalStatus: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
+    color: "#666666",
   },
 });
