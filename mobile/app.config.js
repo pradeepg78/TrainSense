@@ -39,6 +39,7 @@ export default {
       bundleIdentifier: "com.anonymous.train-sense"
     },
     android: {
+      package: "com.anonymous.trainsense",
       adaptiveIcon: {
         foregroundImage: "./assets/images/adaptive-icon.png",
         backgroundColor: "#ffffff"
