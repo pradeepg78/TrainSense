@@ -303,7 +303,7 @@ const MapScreen = () => {
           </ShapeSource>
         )}
 
-        {/* Station Markers - from subway-stops.json */}
+        {/* Station Markers - from subway-stops.json (only show when zoomed in) */}
         {processedStopsGeoJSON && processedStopsGeoJSON.features.length > 0 && (
           <ShapeSource 
             id="stations" 
@@ -335,9 +335,10 @@ const MapScreen = () => {
               }
             }}
           >
-            {/* All stations - uniform small size */}
+            {/* All stations - uniform small size, only visible when zoomed in (zoom >= 13) */}
             <CircleLayer
               id="stations-all"
+              minZoomLevel={13}
               style={{
                 circleRadius: 2,
                 circleColor: '#FFFFFF',
