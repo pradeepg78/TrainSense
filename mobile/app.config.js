@@ -47,14 +47,10 @@ export default {
     },
     web: {
       bundler: "metro",
-      output: "static",
       favicon: "./assets/images/favicon.png"
     },
     extra: {
       mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN
-    },
-    experiments: {
-      typedRoutes: true
     }
   }
 };
