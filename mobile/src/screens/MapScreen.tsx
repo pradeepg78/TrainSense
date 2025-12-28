@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import Mapbox, { Camera, LocationPuck, MapView } from "@rnmapbox/maps";
+import Constants from "expo-constants";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Dimensions,
@@ -14,9 +15,13 @@ import { apiService, MapStation, Stop } from "../services/api";
 
 const { width, height } = Dimensions.get("window");
 
-// Initialize Mapbox - you'll need to set your access token
-// Get one free at https://account.mapbox.com/
-Mapbox.setAccessToken("pk.eyJ1IjoiZGFuaWVsam9vbmxlZSIsImEiOiJjbWpvbDl0OW4zaXgzM2NxM3p4ZnZ4dW1pIn0.mlbxF2KPlFsk6Ms5VOp9zg");
+// Initialize Mapbox with token from environment
+const mapboxToken = Constants.expoConfig?.extra?.mapboxAccessToken;
+if (mapboxToken) {
+  Mapbox.setAccessToken(mapboxToken);
+} else {
+  console.warn("Mapbox access token not found. Add MAPBOX_ACCESS_TOKEN to your .env file");
+}
 
 // Manhattan center location (Times Square area)
 const MANHATTAN_CENTER = {
@@ -90,7 +95,7 @@ const MapScreen = () => {
       <MapView
         style={styles.map}
         // Use Mapbox Standard style which includes transit
-        styleURL="mapbox://styles/mapbox/dark-v11"
+        styleURL="mapbox://styles/mapbox/standard"
         onRegionDidChange={onRegionChange}
         logoEnabled={false}
         attributionEnabled={false}
