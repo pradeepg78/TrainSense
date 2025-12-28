@@ -87,7 +87,11 @@ const MapScreen = () => {
   const [showStationModal, setShowStationModal] = useState(false);
   const [subwayLinesGeoJSON, setSubwayLinesGeoJSON] = useState<any>(null);
   const [subwayStopsGeoJSON, setSubwayStopsGeoJSON] = useState<any>(null);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  // Start with Manhattan center location
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>({
+    latitude: MANHATTAN_CENTER.latitude,
+    longitude: MANHATTAN_CENTER.longitude,
+  });
 
   const cameraRef = useRef<Camera>(null);
 
@@ -106,6 +110,12 @@ const MapScreen = () => {
         
         if (status !== 'granted') {
           console.log('Location permission denied');
+          // For testing: use Manhattan center if permission denied
+          // Remove this after testing
+          setUserLocation({
+            latitude: MANHATTAN_CENTER.latitude,
+            longitude: MANHATTAN_CENTER.longitude,
+          });
           return;
         }
 
@@ -114,32 +124,14 @@ const MapScreen = () => {
           accuracy: Location.Accuracy.Balanced,
         });
         
-        setUserLocation({
+        const coords = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
-        });
-        
-        // Watch position updates
-        const subscription = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: 5000,
-            distanceInterval: 10,
-          },
-          (location) => {
-            setUserLocation({
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-            });
-          }
-        );
-        
-        // Cleanup subscription on unmount
-        return () => {
-          if (subscription) {
-            subscription.remove();
-          }
         };
+        
+        console.log('User location obtained:', coords);
+        // Keep dot in Manhattan - don't update to actual location
+        // The blue dot will always show at Manhattan center
       } catch (error) {
         console.error('Error getting location:', error);
       }
@@ -265,8 +257,11 @@ const MapScreen = () => {
 
   // Create user location GeoJSON
   const userLocationGeoJSON = useMemo(() => {
-    if (!userLocation) return null;
-    return {
+    if (!userLocation) {
+      console.log('No user location available');
+      return null;
+    }
+    const geoJSON = {
       type: "FeatureCollection" as const,
       features: [
         {
@@ -279,6 +274,8 @@ const MapScreen = () => {
         },
       ],
     };
+    console.log('User location GeoJSON created:', geoJSON);
+    return geoJSON;
   }, [userLocation]);
 
   // Process stops GeoJSON to determine transfer stations
@@ -423,20 +420,30 @@ const MapScreen = () => {
           </ShapeSource>
         )}
         
-        {/* User location - blue circle dot */}
+        {/* User location - blue circle dot (rendered last so it's on top) */}
         {userLocationGeoJSON && (
           <ShapeSource id="user-location" shape={userLocationGeoJSON}>
-            {/* Outer blue circle */}
+            {/* Outer blue circle - pulsing effect */}
             <CircleLayer
               id="user-location-outer"
               style={{
-                circleRadius: 10,
+                circleRadius: 12,
                 circleColor: '#007AFF',
-                circleOpacity: 0.2,
+                circleOpacity: 0.25,
                 circleStrokeWidth: 0,
               }}
             />
-            {/* Inner blue circle */}
+            {/* Middle blue circle */}
+            <CircleLayer
+              id="user-location-middle"
+              style={{
+                circleRadius: 8,
+                circleColor: '#007AFF',
+                circleOpacity: 0.5,
+                circleStrokeWidth: 0,
+              }}
+            />
+            {/* Inner blue circle - solid center */}
             <CircleLayer
               id="user-location-inner"
               style={{
