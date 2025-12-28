@@ -23,7 +23,8 @@ export default {
       [
         "expo-location",
         {
-          locationWhenInUsePermission: "Show current location on map."
+          locationWhenInUsePermission: "TrainSense needs your location to show where you are on the map.",
+          locationAlwaysAndWhenInUsePermission: "TrainSense needs your location to show where you are on the map."
         }
       ]
     ],
@@ -36,7 +37,11 @@ export default {
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.anonymous.train-sense"
+      bundleIdentifier: "com.anonymous.train-sense",
+      infoPlist: {
+        NSLocationWhenInUseUsageDescription: "TrainSense needs your location to show where you are on the map.",
+        NSLocationAlwaysAndWhenInUseUsageDescription: "TrainSense needs your location to show where you are on the map."
+      }
     },
     android: {
       package: "com.anonymous.trainsense",
@@ -44,7 +49,11 @@ export default {
         foregroundImage: "./assets/images/adaptive-icon.png",
         backgroundColor: "#ffffff"
       },
-      edgeToEdgeEnabled: true
+      edgeToEdgeEnabled: true,
+      permissions: [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     web: {
       bundler: "metro",

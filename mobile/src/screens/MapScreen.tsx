@@ -3,11 +3,11 @@ import Mapbox, {
   Camera,
   CircleLayer,
   LineLayer,
-  LocationPuck,
   MapView,
-  ShapeSource,
+  ShapeSource
 } from "@rnmapbox/maps";
 import Constants from "expo-constants";
+import * as Location from "expo-location";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
@@ -87,8 +87,64 @@ const MapScreen = () => {
   const [showStationModal, setShowStationModal] = useState(false);
   const [subwayLinesGeoJSON, setSubwayLinesGeoJSON] = useState<any>(null);
   const [subwayStopsGeoJSON, setSubwayStopsGeoJSON] = useState<any>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const cameraRef = useRef<Camera>(null);
+
+  // Get user location
+  useEffect(() => {
+    (async () => {
+      try {
+        // Check current permission status first
+        let { status } = await Location.getForegroundPermissionsAsync();
+        
+        // If not granted, request permission
+        if (status !== 'granted') {
+          const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+          status = newStatus;
+        }
+        
+        if (status !== 'granted') {
+          console.log('Location permission denied');
+          return;
+        }
+
+        // Get current location
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        
+        setUserLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        
+        // Watch position updates
+        const subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 5000,
+            distanceInterval: 10,
+          },
+          (location) => {
+            setUserLocation({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            });
+          }
+        );
+        
+        // Cleanup subscription on unmount
+        return () => {
+          if (subscription) {
+            subscription.remove();
+          }
+        };
+      } catch (error) {
+        console.error('Error getting location:', error);
+      }
+    })();
+  }, []);
 
   // Load subway stops from local JSON file
   useEffect(() => {
@@ -206,6 +262,24 @@ const MapScreen = () => {
     });
     return Array.from(colors);
   }, [subwayLinesGeoJSON]);
+
+  // Create user location GeoJSON
+  const userLocationGeoJSON = useMemo(() => {
+    if (!userLocation) return null;
+    return {
+      type: "FeatureCollection" as const,
+      features: [
+        {
+          type: "Feature" as const,
+          geometry: {
+            type: "Point" as const,
+            coordinates: [userLocation.longitude, userLocation.latitude],
+          },
+          properties: {},
+        },
+      ],
+    };
+  }, [userLocation]);
 
   // Process stops GeoJSON to determine transfer stations
   const processedStopsGeoJSON = useMemo(() => {
@@ -349,12 +423,31 @@ const MapScreen = () => {
           </ShapeSource>
         )}
         
-        {/* Show user location */}
-        <LocationPuck
-          puckBearing="heading"
-          puckBearingEnabled={true}
-          visible={true}
-        />
+        {/* User location - blue circle dot */}
+        {userLocationGeoJSON && (
+          <ShapeSource id="user-location" shape={userLocationGeoJSON}>
+            {/* Outer blue circle */}
+            <CircleLayer
+              id="user-location-outer"
+              style={{
+                circleRadius: 10,
+                circleColor: '#007AFF',
+                circleOpacity: 0.2,
+                circleStrokeWidth: 0,
+              }}
+            />
+            {/* Inner blue circle */}
+            <CircleLayer
+              id="user-location-inner"
+              style={{
+                circleRadius: 6,
+                circleColor: '#007AFF',
+                circleStrokeColor: '#FFFFFF',
+                circleStrokeWidth: 2,
+              }}
+            />
+          </ShapeSource>
+        )}
       </MapView>
 
       {/* Floating Controls */}
