@@ -1,46 +1,93 @@
 # TrainSense - NYC Transit App
 
-A real-time NYC transit app that connects to the MTA API to provide accurate subway information, including routes, stations, arrival times, and service status.
+A real-time NYC subway app built with React Native (Expo) and a Python Flask backend. Connects to the MTA GTFS API to provide live arrival times, interactive maps, and route planning between any two stations.
 
 ## Features
 
-- **Real-time Arrivals**: Live arrival times from MTA GTFS real-time feeds
-- **Interactive Map**: View all subway stations with their actual routes
-- **Route Information**: Accurate route data with colors and names
-- **Service Status**: Real-time service status for all subway lines
-- **Trip Planning**: Plan trips between stations
-- **Station Details**: View which routes serve each station
+- **Interactive Map**: Mapbox-powered map showing all NYC subway stations with real MTA route colors
+- **Real-time Arrivals**: Live arrival times pulled from MTA GTFS real-time feeds, shown per station
+- **Route Browser**: Browse all subway lines with stops and service information
+- **Trip Planner**: Enter any two stations and get all viable routes — direct and with transfers — using BFS pathfinding over the MTA GTFS graph
+- **Transfer-aware Routing**: Understands transfer hubs (e.g. Fulton St, Times Sq) and finds paths across connecting lines
+- **Station Details**: Tap any station to see which routes serve it and upcoming arrivals
+
+## Tech Stack
+
+### Backend
+- Python 3.9, Flask 3.0
+- SQLAlchemy + SQLite
+- MTA GTFS static + real-time feeds
+- BFS pathfinding over stop graph with transfer hub collapsing
+
+### Mobile
+- React Native + Expo 53
+- TypeScript
+- Mapbox (`@rnmapbox/maps`)
+- React Navigation (bottom tabs)
 
 ## Prerequisites
 
 - Python 3.8+
-- Node.js 16+
-- MTA API Key (get one from [MTA Developer Portal](https://api.mta.info/))
+- Node.js 18+
+- Expo CLI
+- MTA API Key — get one free at [api.mta.info](https://api.mta.info/)
+- Mapbox token — get one at [mapbox.com](https://mapbox.com/)
 
-## Setup Instructions
+## Setup
 
-### 1. Backend Setup
+### 1. Backend
 
 ```bash
 cd backend
 
-# Install Python dependencies
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Set up environment variables
+# Add your MTA API key
 cp .env.example .env
-# Edit .env and add your MTA_API_KEY
+# Edit .env and set MTA_API_KEY=your_key_here
 
-# Set up database and import MTA data
+# Set up the database and import GTFS data
 python setup_database.py
 
-# Start the backend server
+# Populate stop_routes table (required for trip planner)
+python3 -c "
+import csv, os
+from app import create_app, db
+from app.models.transit import StopRoute
+
+app = create_app()
+with app.app_context():
+    gtfs_dir = 'data/gtfs'
+    trip_to_route = {}
+    with open(os.path.join(gtfs_dir, 'trips.txt')) as f:
+        for row in csv.DictReader(f):
+            trip_to_route[row['trip_id']] = row['route_id']
+    pairs = set()
+    with open(os.path.join(gtfs_dir, 'stop_times.txt')) as f:
+        for row in csv.DictReader(f):
+            r = trip_to_route.get(row['trip_id'])
+            if r: pairs.add((row['stop_id'], r))
+    StopRoute.query.delete()
+    db.session.commit()
+    from sqlalchemy.orm import Session
+    batch = [StopRoute(stop_id=s, route_id=r) for s, r in pairs]
+    db.session.bulk_save_objects(batch)
+    db.session.commit()
+    print(f'Done: {StopRoute.query.count()} rows')
+"
+
+# Start the server
 python run.py
 ```
 
-The backend will be available at `http://localhost:5001`
+Backend runs at `http://localhost:5001`
 
-### 2. Frontend Setup
+### 2. Mobile
 
 ```bash
 cd mobile
@@ -48,140 +95,92 @@ cd mobile
 # Install dependencies
 npm install
 
-# Start the development server
+# Build native code (required — Mapbox needs a custom dev build, not Expo Go)
+npm run ios      # or npm run android
+
+# After the first native build, you can use:
 npm start
 ```
 
-### 3. Database Setup
+> **Note:** This app uses `@rnmapbox/maps` which requires a custom development build. It will **not** work with the standard Expo Go app. You must run `npm run ios` or `npm run android` at least once to compile the native code.
 
-The app uses SQLite for the database. The setup script will:
+## Project Structure
 
-1. Create all necessary tables
-2. Download GTFS data from MTA APIs
-3. Import routes, stops, and stop-route relationships
-4. Set up real-time data connections
+```
+TrainSense/
+├── backend/
+│   ├── app/
+│   │   ├── models/transit.py        # DB models: Route, Stop, StopRoute, Trip
+│   │   ├── routes/transit_routes.py # All API endpoints + BFS trip planner
+│   │   └── services/
+│   │       ├── gtfs_service.py      # GTFS static data loader
+│   │       └── realtime_service.py  # MTA real-time feed processor
+│   ├── data/gtfs/                   # Downloaded MTA GTFS files
+│   ├── run.py                       # Flask app entry point
+│   └── setup_database.py           # DB init + GTFS import
+└── mobile/
+    └── src/
+        ├── screens/
+        │   ├── MapScreen.tsx        # Interactive Mapbox map
+        │   ├── RouteScreen.tsx      # Subway line browser
+        │   └── SearchScreen.tsx     # Trip planner UI
+        ├── components/
+        │   ├── RouteSymbol.tsx      # MTA-style route badge (circle/diamond)
+        │   ├── StationModal.tsx     # Station arrivals popup
+        │   └── TrainStopsModal.tsx  # Route stops list
+        ├── services/api.ts          # Backend API client + TypeScript types
+        └── utils/mtaColors.ts       # Official MTA brand colors
+```
 
 ## API Endpoints
 
-### Routes
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/routes` | All subway routes |
+| GET | `/api/v1/stops` | All subway stops |
+| GET | `/api/v1/stops/{stop_id}/routes` | Routes for a stop |
+| GET | `/api/v1/realtime/{stop_id}` | Live arrivals for a stop |
+| GET | `/api/v1/service-status` | Service status all lines |
+| GET | `/api/v1/map/stations` | Stations formatted for map display |
+| POST | `/api/v1/plan-trip` | Trip planner — body: `{ origin_id, destination_id }` |
 
-- `GET /api/v1/routes` - Get all subway routes
-- `GET /api/v1/stops` - Get all subway stops with route information
-- `GET /api/v1/stops/{stop_id}/routes` - Get routes for a specific stop
+## How Trip Planning Works
 
-### Real-time Data
+The `/plan-trip` endpoint uses BFS (Breadth-First Search) over a graph built from MTA GTFS data:
 
-- `GET /api/v1/realtime/{stop_id}` - Get real-time arrivals for a stop
-- `GET /api/v1/service-status` - Get service status for all routes
-- `GET /api/v1/realtime/health` - Check health of real-time feeds
-
-### Map & Planning
-
-- `GET /api/v1/map/stations` - Get all stations for map display
-- `POST /api/v1/plan-trip` - Plan a trip between two stops
-
-## Data Sources
-
-The app uses real data from:
-
-- **MTA GTFS Static Data**: Routes, stops, and schedules
-- **MTA GTFS Real-time Feeds**: Live arrival times and service updates
-- **MTA API**: Service status and alerts
-
-## Architecture
-
-### Backend (Flask)
-
-- `app/models/transit.py` - Database models for routes, stops, trips
-- `app/routes/transit_routes.py` - API endpoints
-- `app/services/realtime_service.py` - Real-time data processing
-- `import_gtfs_data.py` - Data import from MTA APIs
-
-### Frontend (React Native)
-
-- `src/screens/` - Main app screens
-- `src/services/api.ts` - API client
-- `src/components/` - Reusable components
+1. **Transfer hubs** are built from `transfers.txt` — stations like Fulton St with multiple line platforms are collapsed into single nodes
+2. **Route graph** maps each subway line to the set of hub/station nodes it serves
+3. **BFS** finds all paths from origin to destination with up to 2 transfers
+4. **Deduplication** by trunk line (A/C/E, N/Q/R/W, etc.) keeps results clean
+5. Results are capped at 8 options, sorted by fewest transfers first
 
 ## Database Schema
 
-- **routes**: Subway routes with colors and names
-- **stops**: Subway stations with coordinates
-- **stop_routes**: Many-to-many relationship between stops and routes
-- **trips**: Individual train trips
-
-## Real-time Data
-
-The app connects to MTA's GTFS real-time feeds:
-
-- **123456**: 1, 2, 3, 4, 5, 6 trains
-- **ace**: A, C, E trains
-- **bdfm**: B, D, F, M trains
-- **g**: G train
-- **jz**: J, Z trains
-- **nqrw**: N, Q, R, W trains
-- **l**: L train
-- **si**: Staten Island Railway
-- **7**: 7 train
+| Table | Description |
+|-------|-------------|
+| `routes` | Subway lines with MTA colors and names |
+| `stops` | Stations with coordinates and parent relationships |
+| `stop_routes` | Many-to-many: which routes serve which stops |
+| `trips` | Individual scheduled train trips |
 
 ## Troubleshooting
 
-### No stations showing on map
+**Map not showing / Mapbox error**
+- You must run `npm run ios` or `npm run android` first — Expo Go won't work
+- Verify your Mapbox token is set in `mobile/app.config.js`
 
-1. Check that the backend is running
-2. Verify MTA API key is set correctly
-3. Check database has been populated with data
-4. Look at backend logs for API errors
+**No stations on map**
+- Make sure the backend is running on port 5001
+- Check the database was populated: `python setup_database.py`
 
-### No arrival times
+**Trip planner returns no routes**
+- Make sure you ran the stop_routes seeding script above
+- Verify `data/gtfs/stop_times.txt` and `trips.txt` exist
 
-1. Check MTA real-time feed health
-2. Verify API key has real-time access
-3. Check network connectivity to MTA APIs
-
-### Database issues
-
-1. Delete the database file and re-run setup
-2. Check MTA API key permissions
-3. Verify GTFS data is being downloaded correctly
-
-## Development
-
-### Adding new features
-
-1. Update database models if needed
-2. Add API endpoints in `transit_routes.py`
-3. Update frontend API service
-4. Add UI components
-
-### Testing
-
-```bash
-# Backend tests
-cd backend
-python -m pytest
-
-# Frontend tests
-cd mobile
-npm test
-```
+**No arrival times**
+- Check your MTA API key in `backend/.env`
+- Verify the key has real-time feed access at [api.mta.info](https://api.mta.info/)
 
 ## License
 
-This project is for educational purposes. Please respect MTA's API terms of service.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## Support
-
-For issues related to:
-
-- MTA API access: Contact MTA Developer Support
-- App functionality: Check the troubleshooting section above
-- Setup issues: Verify all prerequisites are installed
+Educational use. Please respect MTA's API terms of service.
