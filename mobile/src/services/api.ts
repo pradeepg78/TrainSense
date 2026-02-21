@@ -38,15 +38,23 @@ export interface MapStation {
   hub_id?: string;
 }
 
+export interface TripLeg {
+  route: Route;
+  from_stop: Stop;
+  to_stop: Stop;
+}
+
+export interface TripOption {
+  legs: TripLeg[];
+  transfers: number;
+  estimated_minutes: number;
+  estimated_time: string;
+}
+
 export interface TripPlan {
   origin: Stop;
   destination: Stop;
-  routes: Array<{
-    route: Route;
-    type: string;
-  }>;
-  estimated_time: string;
-  transfers: number;
+  options: TripOption[];
 }
 
 export interface ServiceStatus {

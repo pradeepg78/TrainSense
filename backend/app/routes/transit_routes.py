@@ -283,68 +283,325 @@ def get_realtime_updates(stop_id):
             'error': 'Failed to fetch real-time updates'
         }), 500
 
+def _get_parent_id(stop):
+    """Return the canonical station ID (parent if available, else stop ID)."""
+    return stop.parent_station if stop.parent_station else stop.id
+
+
+def _find_gtfs_dir():
+    """Return the first gtfs directory that contains trips.txt."""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs'),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'gtfs'),
+    ]
+    for d in candidates:
+        if os.path.exists(os.path.join(d, 'trips.txt')):
+            return d
+    return candidates[0]
+
+
+def _build_transfer_groups():
+    """
+    Read transfers.txt and return a dict: station_id -> hub_id (int).
+    Stations connected by transfers share the same hub_id.
+    """
+    gtfs_dir = _find_gtfs_dir()
+    transfers_file = os.path.join(gtfs_dir, 'transfers.txt')
+    transfer_graph = defaultdict(set)
+    if os.path.exists(transfers_file):
+        with open(transfers_file, 'r', encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                a = row['from_stop_id']
+                b = row['to_stop_id']
+                transfer_graph[a].add(b)
+                transfer_graph[b].add(a)
+
+    stop_to_hub = {}
+    hub_counter = 0
+    for start in list(transfer_graph):
+        if start in stop_to_hub:
+            continue
+        hub_counter += 1
+        q = deque([start])
+        while q:
+            s = q.popleft()
+            if s in stop_to_hub:
+                continue
+            stop_to_hub[s] = hub_counter
+            for neighbor in transfer_graph[s]:
+                if neighbor not in stop_to_hub:
+                    q.append(neighbor)
+    return stop_to_hub
+
+
+def _build_route_stations_map(stop_to_hub):
+    """
+    Return a dict: route_id -> set of canonical node IDs served by that route.
+    Collapses all platforms at a transfer hub into one node.
+    """
+    route_stations = defaultdict(set)
+    for sr in StopRoute.query.all():
+        stop = Stop.query.get(sr.stop_id)
+        if not stop:
+            continue
+        parent = _get_parent_id(stop)
+        node = f"hub_{stop_to_hub[parent]}" if parent in stop_to_hub else parent
+        route_stations[sr.route_id].add(node)
+    return route_stations
+
+
+def _build_stop_count_lookup():
+    """
+    Return a dict: (route_id, node_a, node_b) -> stop_count between them.
+    Built from stop_times.txt by finding the median stop count across all trips
+    for that route that serve both stops. node_a/node_b are parent station IDs
+    (not hub IDs — we resolve those at call time).
+    """
+    gtfs_dir = _find_gtfs_dir()
+
+    # Build trip_id -> route_id
+    trip_to_route = {}
+    with open(os.path.join(gtfs_dir, 'trips.txt'), encoding='utf-8') as f:
+        for row in csv.DictReader(f):
+            trip_to_route[row['trip_id']] = row['route_id']
+
+    # Build route_id -> {trip_id -> [(seq, stop_id), ...]}
+    route_trip_stops = defaultdict(lambda: defaultdict(list))
+    with open(os.path.join(gtfs_dir, 'stop_times.txt'), encoding='utf-8') as f:
+        for row in csv.DictReader(f):
+            route_id = trip_to_route.get(row['trip_id'])
+            if route_id:
+                route_trip_stops[route_id][row['trip_id']].append(
+                    (int(row['stop_sequence']), row['stop_id'])
+                )
+
+    # For each route, build a stop_id -> median sequence position map
+    # Then lookup count = |seq_a - seq_b|
+    # Store as route_id -> {stop_id -> representative_sequence}
+    route_stop_seq = defaultdict(dict)
+    for route_id, trips in route_trip_stops.items():
+        # Collect all sequence numbers seen for each stop across all trips
+        stop_seqs = defaultdict(list)
+        for trip_id, stops in trips.items():
+            for seq, stop_id in stops:
+                stop_seqs[stop_id].append(seq)
+        for stop_id, seqs in stop_seqs.items():
+            route_stop_seq[route_id][stop_id] = sorted(seqs)[len(seqs) // 2]  # median
+
+    return route_stop_seq
+
+
+def _get_stop_count(route_id, from_stop_ids, to_stop_ids, route_stop_seq):
+    """
+    Return the number of stops between two sets of stop IDs on a route.
+    from_stop_ids / to_stop_ids are lists of candidate stop IDs (N/S variants).
+    Returns None if not computable.
+    """
+    seq_map = route_stop_seq.get(route_id, {})
+    from_seqs = [seq_map[s] for s in from_stop_ids if s in seq_map]
+    to_seqs = [seq_map[s] for s in to_stop_ids if s in seq_map]
+    if not from_seqs or not to_seqs:
+        return None
+    return abs(from_seqs[0] - to_seqs[0])
+
+
+def _get_station_node(station_id, stop_to_hub):
+    """Return the graph node for a station (hub node or station ID)."""
+    return f"hub_{stop_to_hub[station_id]}" if station_id in stop_to_hub else station_id
+
+
+def _get_node_routes(node, route_stations_map):
+    """Return all route IDs that serve a node."""
+    return {route_id for route_id, nodes in route_stations_map.items() if node in nodes}
+
+
+# Routes that share the same physical track and are interchangeable for planning
+_ROUTE_TRUNK = {
+    'A': 'ACE', 'C': 'ACE', 'E': 'ACE',
+    'B': 'BDFM', 'D': 'BDFM', 'F': 'BDFM', 'FX': 'BDFM', 'M': 'BDFM',
+    'N': 'NQRW', 'Q': 'NQRW', 'R': 'NQRW', 'W': 'NQRW',
+    '1': '123', '2': '123', '3': '123',
+    '4': '456', '5': '456', '6': '456', '6X': '456',
+    '7': '7', '7X': '7',
+    'J': 'JZ', 'Z': 'JZ',
+    'L': 'L', 'G': 'G', 'S': 'S', 'GS': 'S', 'FS': 'S',
+    'H': 'H', 'SI': 'SI',
+}
+
+def _trunk(route_id):
+    return _ROUTE_TRUNK.get(route_id, route_id)
+
+
+def _bfs_all_paths(origin_node, dest_node, route_stations_map):
+    """
+    BFS that collects distinct paths. Strategy:
+    - Collect all direct (0-transfer) paths, deduplicated by trunk.
+    - If no direct paths exist, collect 1-transfer paths deduplicated by trunk pair.
+    - If still none, try 2-transfer paths.
+    - Cap at 8 results total. Never show 2-transfer options when 1-transfer exist.
+    - Reject paths that loop back to the same trunk (e.g. 3 -> R -> 3).
+    """
+    MAX_OPTIONS = 8
+
+    for max_legs in [1, 2, 3]:
+        found_paths = []
+        seen_trunk_combos = set()
+
+        queue = deque()
+        queue.append((origin_node, None, []))
+        visited = set()
+        visited.add((origin_node, None))
+
+        while queue:
+            node, last_route, legs = queue.popleft()
+
+            if len(legs) >= max_legs:
+                continue
+
+            for route_id in _get_node_routes(node, route_stations_map):
+                for next_node in route_stations_map.get(route_id, set()):
+                    if next_node == node:
+                        continue
+                    new_leg = {'route_id': route_id, 'from_node': node, 'to_node': next_node}
+                    new_legs = legs + [new_leg]
+
+                    if next_node == dest_node:
+                        merged = _merge_legs(new_legs)
+                        trunks = [_trunk(l['route_id']) for l in merged]
+                        # Reject paths that visit the same trunk twice (loop)
+                        if len(trunks) != len(set(trunks)):
+                            continue
+                        trunk_combo = tuple(trunks)
+                        if trunk_combo not in seen_trunk_combos:
+                            seen_trunk_combos.add(trunk_combo)
+                            found_paths.append(merged)
+                        continue
+
+                    state = (next_node, route_id)
+                    if state not in visited:
+                        visited.add(state)
+                        queue.append((next_node, route_id, new_legs))
+
+        if found_paths:
+            return found_paths[:MAX_OPTIONS]
+
+    return []
+
+
+def _merge_legs(legs):
+    """Merge consecutive legs on the same route into one leg."""
+    merged = []
+    for leg in legs:
+        if merged and merged[-1]['route_id'] == leg['route_id']:
+            merged[-1]['to_node'] = leg['to_node']
+        else:
+            merged.append(dict(leg))
+    return merged
+
+
 @transit_bp.route('/plan-trip', methods=['POST'])
 def plan_trip():
-    """Plan a trip between two stops"""
+    """Plan a trip and return ALL viable routes with real stop-count-based time estimates."""
     try:
         data = request.get_json()
         origin_id = data.get('origin_id')
         destination_id = data.get('destination_id')
-        
+
         if not origin_id or not destination_id:
-            return jsonify({
-                'success': False,
-                'error': 'Origin and destination IDs are required'
-            }), 400
-        
-        # Get the stops
+            return jsonify({'success': False, 'error': 'Origin and destination IDs are required'}), 400
+
         origin = Stop.query.get(origin_id)
         destination = Stop.query.get(destination_id)
-        
+
         if not origin or not destination:
-            return jsonify({
-                'success': False,
-                'error': 'Origin or destination stop not found'
-            }), 404
-        
-        # For now, return a simple trip plan
-        # In a real implementation, this would use a routing algorithm
-        trip_plan = {
-            'origin': origin.to_dict(),
-            'destination': destination.to_dict(),
-            'routes': [],
-            'estimated_time': '15-20 minutes',
-            'transfers': 0
-        }
-        
-        # Find common routes between origin and destination
-        origin_routes = set(route.id for route in origin.get_routes())
-        dest_routes = set(route.id for route in destination.get_routes())
-        common_routes = origin_routes.intersection(dest_routes)
-        
-        if common_routes:
-            # Direct route available
-            route = Route.query.get(list(common_routes)[0])
-            trip_plan['routes'].append({
-                'route': route.to_dict(),
-                'type': 'direct'
+            return jsonify({'success': False, 'error': 'Origin or destination stop not found'}), 404
+
+        origin_parent = _get_parent_id(origin)
+        dest_parent = _get_parent_id(destination)
+
+        stop_to_hub = _build_transfer_groups()
+        hub_to_stops = defaultdict(list)
+        for stop_id, hub_id in stop_to_hub.items():
+            hub_to_stops[hub_id].append(stop_id)
+
+        route_stations_map = _build_route_stations_map(stop_to_hub)
+        route_stop_seq = _build_stop_count_lookup()
+
+        origin_node = _get_station_node(origin_parent, stop_to_hub)
+        dest_node = _get_station_node(dest_parent, stop_to_hub)
+
+        all_paths = _bfs_all_paths(origin_node, dest_node, route_stations_map)
+
+        if not all_paths:
+            return jsonify({'success': False, 'error': 'No route found between these stations'}), 404
+
+        # Resolve a graph node to a Stop dict for display
+        def stop_dict_for_node(node):
+            if node.startswith('hub_'):
+                hub_id = int(node[4:])
+                for sid in hub_to_stops.get(hub_id, []):
+                    s = Stop.query.get(sid)
+                    if s and s.location_type == 1:  # prefer parent stations
+                        return s.to_dict()
+                for sid in hub_to_stops.get(hub_id, []):
+                    s = Stop.query.get(sid)
+                    if s:
+                        return s.to_dict()
+            s = Stop.query.get(node)
+            return s.to_dict() if s else {'id': node, 'name': node}
+
+        # Get stop IDs associated with a node for time lookup
+        def stop_ids_for_node(node):
+            if node.startswith('hub_'):
+                hub_id = int(node[4:])
+                return hub_to_stops.get(hub_id, [])
+            return [node, node + 'N', node + 'S']
+
+        def estimate_minutes(legs):
+            total_stops = 0
+            for leg in legs:
+                from_ids = stop_ids_for_node(leg['from_node'])
+                to_ids = stop_ids_for_node(leg['to_node'])
+                count = _get_stop_count(leg['route_id'], from_ids, to_ids, route_stop_seq)
+                total_stops += count if count is not None else 5  # fallback 5 stops
+            transfers = len(legs) - 1
+            # ~2.5 min per stop + 4 min per transfer + 2 min base
+            return int(2.5 * total_stops + 4 * transfers + 2)
+
+        options = []
+        for path in all_paths:
+            transfers = len(path) - 1
+            est = estimate_minutes(path)
+            response_legs = []
+            for leg in path:
+                route = Route.query.get(leg['route_id'])
+                response_legs.append({
+                    'route': route.to_dict() if route else {'id': leg['route_id']},
+                    'from_stop': stop_dict_for_node(leg['from_node']),
+                    'to_stop': stop_dict_for_node(leg['to_node']),
+                })
+            options.append({
+                'legs': response_legs,
+                'transfers': transfers,
+                'estimated_minutes': est,
+                'estimated_time': f"~{est} min",
             })
-        else:
-            # Need to find transfer options
-            # This is a simplified version - real implementation would be more complex
-            trip_plan['transfers'] = 1
-            trip_plan['estimated_time'] = '25-35 minutes'
-        
+
+        # Sort by estimated time
+        options.sort(key=lambda o: o['estimated_minutes'])
+
         return jsonify({
             'success': True,
-            'data': trip_plan
+            'data': {
+                'origin': origin.to_dict(),
+                'destination': destination.to_dict(),
+                'options': options,
+            }
         })
+
     except Exception as e:
         logger.error(f"Error planning trip: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'Failed to plan trip'
-        }), 500
+        return jsonify({'success': False, 'error': 'Failed to plan trip'}), 500
 
 @transit_bp.route('/map/stations', methods=['GET'])
 def get_map_stations():

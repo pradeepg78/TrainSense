@@ -25,23 +25,23 @@ def make_shell_context():
 if __name__ == '__main__':
     # Validate configuration, aka check if MTA_API_KEY is valid
     if Config.validate_config():
-        print("✅ Configuration validated successfully")
+        print("Configuration validated successfully")
     else:
-        print("⚠️  Configuration issues detected")
+        print("Configuration issues detected")
     
-    print(f"🚇 Starting MTA Subway Crowd Prediction API")
-    print(f"🌐 Running on: http://localhost:5000")
+    print(f"Starting MTA Subway Crowd Prediction API")
+    print(f"Running on: http://localhost:5000")
     
     # app.config is a special dictionary like object in Flask that is used to store configuration variables
     # When create_app() is run, it loads config values into app.config
-    print(f"📊 Database: {app.config['SQLALCHEMY_DATABASE_URI']}") 
-    print(f"🔑 MTA API Key: {'✅ Configured' if app.config['MTA_API_KEY'] else '❌ Missing'}")
+    print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI']}") 
+    print(f"MTA API Key: {'Configured' if app.config['MTA_API_KEY'] else 'Missing'}")
     
     # Create database tables
     with app.app_context(): # Creates flask application context
         db.create_all() # Create all database tables based on models
         #! MAKE SURE THE DB TABLES ARE ACTUALLY BEING CREATED
-        print("📋 Database tables created")
+        print("Database tables created")
     
     # Run the Flask app
     app.run(
