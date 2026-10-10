@@ -1108,3 +1108,22 @@ def get_trunk_shapes():
                         })
     
     return jsonify({'success': True, 'data': trunk_segments}) 
+@transit_bp.route('/trains/<path:trip_id>', methods=['GET'])
+def get_train_location(trip_id):
+    """
+    Live position and remaining stops for one train
+    GET /api/trains/062750_1..S03X015?route=1
+    """
+    from app.services.train_service import get_train
+
+    route_id = request.args.get('route')
+    if not route_id:
+        return jsonify({'success': False, 'error': 'route query parameter is required'}), 400
+    try:
+        train = get_train(trip_id, route_id)
+    except Exception as e:
+        logger.error(f"Error locating train {trip_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    if not train:
+        return jsonify({'success': False, 'error': 'Train not found in live feed'}), 404
+    return jsonify({'success': True, 'data': train})

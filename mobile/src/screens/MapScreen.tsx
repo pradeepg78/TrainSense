@@ -18,7 +18,11 @@ import {
   View,
 } from "react-native";
 import { StationModal } from "../components/StationModal";
-import { Stop } from "../services/api";
+import { TrainPanel } from "../components/TrainPanel";
+import { TrackedTrain, useTrainTracking } from "../hooks/useTrainTracking";
+import { Arrival, Stop } from "../services/api";
+import { getMtaColor } from "../utils/mtaColors";
+import { trainBounds, trainToPathGeoJSON, trainToPositionGeoJSON } from "../utils/trainGeo";
 
 const { width, height } = Dimensions.get("window");
 
@@ -94,6 +98,18 @@ const MapScreen = () => {
   });
 
   const cameraRef = useRef<Camera>(null);
+  const [trackedTrain, setTrackedTrain] = useState<TrackedTrain | null>(null);
+  const { train, loading: trainLoading, error: trainError } = useTrainTracking(trackedTrain);
+
+  const trainPathGeoJSON = useMemo(() => trainToPathGeoJSON(train), [train]);
+  const trainPositionGeoJSON = useMemo(() => trainToPositionGeoJSON(train), [train]);
+
+  // Frame the train and its next few stops when tracking starts
+  useEffect(() => {
+    if (!train) return;
+    const [sw, ne] = trainBounds(train);
+    cameraRef.current?.fitBounds(ne, sw, [80, 90, 320, 40], 600);
+  }, [train?.trip_id]);
 
   // Get user location
   useEffect(() => {
@@ -330,6 +346,13 @@ const MapScreen = () => {
     setSelectedStation(null);
   };
 
+  const handleTrainPress = (arrival: Arrival) => {
+    if (!arrival.trip_id) return;
+    setShowStationModal(false);
+    setSelectedStation(null);
+    setTrackedTrain({ tripId: arrival.trip_id, routeId: arrival.route });
+  };
+
   const onRegionChange = (feature: any) => {
     if (feature?.properties?.zoomLevel) {
       setZoomLevel(feature.properties.zoomLevel);
@@ -371,6 +394,22 @@ const MapScreen = () => {
                 }}
               />
             ))}
+          </ShapeSource>
+        )}
+
+        {/* Tracked train: remaining track */}
+        {trackedTrain && trainPathGeoJSON && (
+          <ShapeSource id="train-path" shape={trainPathGeoJSON}>
+            <LineLayer
+              id="train-path-layer"
+              style={{
+                lineColor: getMtaColor(trackedTrain.routeId).background,
+                lineWidth: 7,
+                lineOpacity: 0.85,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
           </ShapeSource>
         )}
 
@@ -420,6 +459,29 @@ const MapScreen = () => {
           </ShapeSource>
         )}
         
+        {/* Tracked train: live position */}
+        {trackedTrain && trainPositionGeoJSON && (
+          <ShapeSource id="train-position" shape={trainPositionGeoJSON}>
+            <CircleLayer
+              id="train-position-halo"
+              style={{
+                circleRadius: 16,
+                circleColor: getMtaColor(trackedTrain.routeId).background,
+                circleOpacity: 0.25,
+              }}
+            />
+            <CircleLayer
+              id="train-position-dot"
+              style={{
+                circleRadius: 9,
+                circleColor: getMtaColor(trackedTrain.routeId).background,
+                circleStrokeColor: '#FFFFFF',
+                circleStrokeWidth: 3,
+              }}
+            />
+          </ShapeSource>
+        )}
+
         {/* User location - blue circle dot (rendered last so it's on top) */}
         {userLocationGeoJSON && (
           <ShapeSource id="user-location" shape={userLocationGeoJSON}>
@@ -502,10 +564,21 @@ const MapScreen = () => {
         </View>
       )}
 
+      {trackedTrain && (
+        <TrainPanel
+          routeId={trackedTrain.routeId}
+          train={train}
+          loading={trainLoading}
+          error={trainError}
+          onClose={() => setTrackedTrain(null)}
+        />
+      )}
+
       <StationModal
         visible={showStationModal}
         onClose={handleCloseModal}
         station={selectedStation}
+        onTrainPress={handleTrainPress}
       />
     </View>
   );

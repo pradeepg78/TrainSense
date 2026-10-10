@@ -113,6 +113,30 @@ export interface CrowdPrediction {
   };
 }
 
+export interface TrainStop {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  parent_station: string;
+  arrival_time?: number;
+  minutes?: number;
+}
+
+export interface TrainLocation {
+  trip_id: string;
+  route_id: string;
+  direction: string;
+  destination: string;
+  status: "stopped_at" | "in_transit";
+  position: { latitude: number; longitude: number };
+  previous_stop: TrainStop | null;
+  next_stop: TrainStop;
+  upcoming_stops: TrainStop[];
+  path: { latitude: number; longitude: number }[]; // remaining track, for the map
+  updated_at: number;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -245,6 +269,13 @@ export const apiService = {
   // Route Shape
   async getRouteShape(routeId: string): Promise<ApiResponse<any>> {
     return apiRequest<any>(`/route-shape/${routeId}`);
+  },
+
+  // Live position of one train
+  async getTrainLocation(tripId: string, routeId: string): Promise<ApiResponse<TrainLocation>> {
+    return apiRequest<TrainLocation>(
+      `/trains/${encodeURIComponent(tripId)}?route=${encodeURIComponent(routeId)}`
+    );
   },
 
   // Crowd Prediction

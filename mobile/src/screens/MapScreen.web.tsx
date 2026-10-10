@@ -6,7 +6,11 @@ import Map, { Layer, MapRef, Source } from "react-map-gl";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { StationModal } from "../components/StationModal";
-import { Stop } from "../services/api";
+import { TrainPanel } from "../components/TrainPanel";
+import { TrackedTrain, useTrainTracking } from "../hooks/useTrainTracking";
+import { Arrival, Stop } from "../services/api";
+import { getMtaColor } from "../utils/mtaColors";
+import { trainBounds, trainToPathGeoJSON, trainToPositionGeoJSON } from "../utils/trainGeo";
 
 // Import local subway lines and stops data
 import subwayLinesData from "../assets/subway-lines.json";
@@ -52,6 +56,8 @@ const MapScreen = () => {
   const [showStationModal, setShowStationModal] = useState(false);
   const [subwayLinesGeoJSON, setSubwayLinesGeoJSON] = useState<any>(null);
   const [subwayStopsGeoJSON, setSubwayStopsGeoJSON] = useState<any>(null);
+  const [trackedTrain, setTrackedTrain] = useState<TrackedTrain | null>(null);
+  const { train, loading: trainLoading, error: trainError } = useTrainTracking(trackedTrain);
 
   // User location stays at Manhattan center (mirrors native behavior)
   const userLocation = MANHATTAN_CENTER;
@@ -167,6 +173,27 @@ const MapScreen = () => {
     setSelectedStation(null);
   };
 
+  const handleTrainPress = (arrival: Arrival) => {
+    if (!arrival.trip_id) return;
+    setShowStationModal(false);
+    setSelectedStation(null);
+    setTrackedTrain({ tripId: arrival.trip_id, routeId: arrival.route });
+  };
+
+  const trainPathGeoJSON = useMemo(() => trainToPathGeoJSON(train), [train]);
+  const trainPositionGeoJSON = useMemo(() => trainToPositionGeoJSON(train), [train]);
+
+  // Frame the train and its next few stops when tracking starts
+  useEffect(() => {
+    if (!train) return;
+    const [sw, ne] = trainBounds(train);
+    mapRef.current?.fitBounds([sw, ne], {
+      padding: { top: 80, bottom: 320, left: 40, right: 90 },
+      maxZoom: 15,
+      duration: 600,
+    });
+  }, [train?.trip_id]);
+
   const handleMapClick = (e: any) => {
     const feature = e.features?.[0];
     if (!feature || feature.geometry?.type !== "Point") return;
@@ -229,6 +256,22 @@ const MapScreen = () => {
           </Source>
         )}
 
+        {/* Tracked train: remaining track + live position */}
+        {trackedTrain && trainPathGeoJSON && (
+          <Source id="train-path" type="geojson" data={trainPathGeoJSON}>
+            <Layer
+              id="train-path-layer"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": getMtaColor(trackedTrain.routeId).background,
+                "line-width": 7,
+                "line-opacity": 0.85,
+              }}
+            />
+          </Source>
+        )}
+
         {/* Station Markers (only when zoomed in) */}
         {subwayStopsGeoJSON && (
           <Source id="stations" type="geojson" data={subwayStopsGeoJSON}>
@@ -241,6 +284,30 @@ const MapScreen = () => {
                 "circle-color": "#FFFFFF",
                 "circle-stroke-color": "#1a1a1a",
                 "circle-stroke-width": 1.2,
+              }}
+            />
+          </Source>
+        )}
+
+        {trackedTrain && trainPositionGeoJSON && (
+          <Source id="train-position" type="geojson" data={trainPositionGeoJSON}>
+            <Layer
+              id="train-position-halo"
+              type="circle"
+              paint={{
+                "circle-radius": 16,
+                "circle-color": getMtaColor(trackedTrain.routeId).background,
+                "circle-opacity": 0.25,
+              }}
+            />
+            <Layer
+              id="train-position-dot"
+              type="circle"
+              paint={{
+                "circle-radius": 9,
+                "circle-color": getMtaColor(trackedTrain.routeId).background,
+                "circle-stroke-color": "#FFFFFF",
+                "circle-stroke-width": 3,
               }}
             />
           </Source>
@@ -305,10 +372,21 @@ const MapScreen = () => {
         </View>
       )}
 
+      {trackedTrain && (
+        <TrainPanel
+          routeId={trackedTrain.routeId}
+          train={train}
+          loading={trainLoading}
+          error={trainError}
+          onClose={() => setTrackedTrain(null)}
+        />
+      )}
+
       <StationModal
         visible={showStationModal}
         onClose={handleCloseModal}
         station={selectedStation}
+        onTrainPress={handleTrainPress}
       />
     </View>
   );

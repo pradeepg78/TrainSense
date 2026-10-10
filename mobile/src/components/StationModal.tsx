@@ -22,6 +22,8 @@ interface StationModalProps {
   visible: boolean;
   station: Stop | null;
   onClose: () => void;
+  // Called when the user taps an arrival to track that train
+  onTrainPress?: (arrival: Arrival) => void;
 }
 
 type CrowdLevel = "low" | "medium" | "high";
@@ -81,6 +83,7 @@ export const StationModal: React.FC<StationModalProps> = ({
   visible,
   station,
   onClose,
+  onTrainPress,
 }) => {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [loading, setLoading] = useState(false);
@@ -415,16 +418,27 @@ export const StationModal: React.FC<StationModalProps> = ({
                         .sort((a, b) => a.minutes - b.minutes)
                         .slice(0, 4)
                         .map((arrival, index) => (
-                          <View key={index} style={styles.arrivalItem}>
+                          <TouchableOpacity
+                            key={index}
+                            style={styles.arrivalItem}
+                            disabled={!onTrainPress || !arrival.trip_id}
+                            onPress={() => onTrainPress?.(arrival)}
+                            activeOpacity={0.6}
+                          >
                             <Text style={styles.arrivalMinutes}>
                               {formatArrivalTime(arrival.minutes)}
                             </Text>
-                            <View style={[styles.statusBadge, { backgroundColor: getStatusBgColor(arrival.status) }]}>
-                              <Text style={[styles.arrivalStatus, { color: getStatusColor(arrival.status) }]}>
-                                {arrival.status}
-                              </Text>
+                            <View style={styles.arrivalRight}>
+                              <View style={[styles.statusBadge, { backgroundColor: getStatusBgColor(arrival.status) }]}>
+                                <Text style={[styles.arrivalStatus, { color: getStatusColor(arrival.status) }]}>
+                                  {arrival.status}
+                                </Text>
+                              </View>
+                              {onTrainPress && arrival.trip_id && (
+                                <Text style={styles.arrivalChevron}>›</Text>
+                              )}
                             </View>
-                          </View>
+                          </TouchableOpacity>
                         ))}
                     </View>
                   </View>
@@ -679,6 +693,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
     color: "#1a1a1a",
+  },
+  arrivalRight: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  arrivalChevron: {
+    fontSize: 20,
+    color: "#9CA3AF",
+    marginLeft: 8,
+    lineHeight: 20,
   },
   statusBadge: {
     paddingHorizontal: 8,
