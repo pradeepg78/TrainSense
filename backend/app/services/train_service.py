@@ -18,6 +18,7 @@ import time
 from collections import Counter
 from functools import lru_cache
 
+from app.services import crowd_service
 from app.services.realtime_service import RealtimeDataService
 
 GTFS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gtfs')
@@ -329,6 +330,17 @@ def get_train(trip_id, route_id):
     else:
         path = [(lat, lon)] + [(s['latitude'], s['longitude']) for s in upcoming]
 
+    # Crowding: right now (leaving the stop it's at, or the one it last left),
+    # and as it leaves each remaining stop
+    factor = crowd_service.gap_factor(feed, trip_id, route_id, updates)
+    for stop in upcoming[:-1]:
+        stop['crowd'] = crowd_service.estimate(route_id, stop['id'], stop.get('arrival_time') or now, factor)
+    current_stop = next_stop if status == STOPPED_AT or not prev_stop else prev_stop
+    crowd = (crowd_service.estimate(route_id, current_stop['id'], now, factor)
+             or next_stop.get('crowd'))
+    if crowd:
+        crowd['gap_factor'] = round(factor, 2)
+
     return {
         'trip_id': trip_id,
         'route_id': route_id,
@@ -339,6 +351,34 @@ def get_train(trip_id, route_id):
         'previous_stop': prev_stop,
         'next_stop': next_stop,
         'upcoming_stops': upcoming,
+        'crowd': crowd,
         'path': [{'latitude': p[0], 'longitude': p[1]} for p in path],
         'updated_at': vehicle.timestamp if vehicle and vehicle.timestamp else now,
     }
+
+
+def add_crowding_to_arrivals(arrivals):
+    """
+    Annotate station arrivals with how crowded each train will be as it leaves
+    this station. Arrivals carry the station id they were queried with, which
+    may be a parent station; the trip's own stop list gives the platform.
+    """
+    service = RealtimeDataService()
+    for arrival in arrivals:
+        route_id, trip_id = arrival.get('route'), arrival.get('trip_id')
+        feed_id = next((fid for fid, routes in service.FEED_MAPPINGS.items() if route_id in routes), None)
+        feed = service._get_feed_data(feed_id) if feed_id else None
+        if not feed:
+            continue
+        station = (arrival.get('stop_id') or '').rstrip('NS')
+        updates = next(
+            ([(stu.stop_id, _stop_time(stu)) for stu in e.trip_update.stop_time_update]
+             for e in feed.entity
+             if e.HasField('trip_update') and e.trip_update.trip.trip_id == trip_id),
+            [],
+        )
+        platform = next((sid for sid, _ in updates if sid.rstrip('NS') == station), None)
+        if not platform:
+            continue
+        factor = crowd_service.gap_factor(feed, trip_id, route_id, updates)
+        arrival['crowd'] = crowd_service.estimate(route_id, platform, arrival.get('arrival_time') or time.time(), factor)

@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 # Arrivals predicted further in the past than this are stale feed entries
 STALE_ARRIVAL_SECONDS = 60
 
+# MTA refreshes feeds about every 30s; reuse a fetched feed briefly so one
+# request (arrivals + crowding + train lookups) doesn't refetch it repeatedly
+FEED_CACHE_SECONDS = 15
+_feed_cache = {}  # url -> (fetched_at, FeedMessage)
+
 class RealtimeDataService:
     """Service for handling MTA real-time data"""
     
@@ -182,6 +187,10 @@ class RealtimeDataService:
             else:
                 url = f"{self.base_url}/{feed_id}/gtfs-realtime"
             
+            cached = _feed_cache.get(url)
+            if cached and time.time() - cached[0] < FEED_CACHE_SECONDS:
+                return cached[1]
+
             headers = {}
             # API key is now optional
             if self.api_key:
@@ -196,6 +205,7 @@ class RealtimeDataService:
             feed.ParseFromString(response.content)
             
             logger.info(f"Successfully parsed feed {feed_id} with {len(feed.entity)} entities")
+            _feed_cache[url] = (time.time(), feed)
             return feed
             
         except Exception as e:

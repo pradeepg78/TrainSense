@@ -42,3 +42,6 @@ backend/venv/
 backend/.venv/
 __pycache__/
 *.pyc
+
+# Cached MTA ridership downloads (scripts/build_crowd_model.py)
+backend/data/od_cache/

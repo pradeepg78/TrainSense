@@ -12,10 +12,10 @@ import {
 import {
   apiService,
   Arrival,
-  CrowdPrediction,
   Route,
   Stop,
 } from "../services/api";
+import { CrowdBars } from "./CrowdBars";
 import RouteSymbol from "./RouteSymbol";
 
 interface StationModalProps {
@@ -25,14 +25,6 @@ interface StationModalProps {
   // Called when the user taps an arrival to track that train
   onTrainPress?: (arrival: Arrival) => void;
 }
-
-type CrowdLevel = "low" | "medium" | "high";
-
-const CROWD_LABELS: Record<CrowdLevel, string> = {
-  low: "Not crowded",
-  medium: "Moderately crowded",
-  high: "Very crowded",
-};
 
 interface ArrivalGroup {
   route: Route;
@@ -90,8 +82,6 @@ export const StationModal: React.FC<StationModalProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastStationId, setLastStationId] = useState<string | null>(null);
-  const [crowdData, setCrowdData] = useState<CrowdPrediction | null>(null);
-  const [crowdLoading, setCrowdLoading] = useState(false);
 
   const fetchArrivals = async (isRefresh = false) => {
     if (!station) return;
@@ -121,79 +111,15 @@ export const StationModal: React.FC<StationModalProps> = ({
     }
   };
 
-  const fetchCrowdData = async () => {
-    if (!station) return;
-
-    try {
-      setCrowdLoading(true);
-      const response = await apiService.getCrowdPrediction(station.id);
-
-      if (response.success && response.data) {
-        setCrowdData(response.data);
-      } else {
-        setCrowdData(null);
-        console.error("Failed to fetch crowd data:", response.error);
-      }
-    } catch (err) {
-      setCrowdData(null);
-      console.error("Error fetching crowd data:", err);
-    } finally {
-      setCrowdLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (visible && station) {
       fetchArrivals();
-      fetchCrowdData();
     }
   }, [visible, station]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchArrivals(true);
-    fetchCrowdData();
-  };
-
-  // Backend returns low/medium/high/very_high; collapse to three bars
-  const getCrowdLevel = (): CrowdLevel => {
-    switch (crowdData?.prediction.crowd_level) {
-      case "low":
-        return "low";
-      case "high":
-      case "very_high":
-        return "high";
-      default:
-        return "medium";
-    }
-  };
-
-  const getCrowdBarsToFill = (level: CrowdLevel): number => {
-    switch (level) {
-      case "low":
-        return 1;
-      case "medium":
-        return 2;
-      case "high":
-        return 3;
-    }
-  };
-
-  const getCrowdBarStyle = (level: CrowdLevel) => {
-    switch (level) {
-      case "low":
-        return styles.barGreen;
-      case "medium":
-        return styles.barYellow;
-      case "high":
-        return styles.barRed;
-    }
-  };
-
-  const getConfidenceColor = (confidence: number): string => {
-    if (confidence >= 0.8) return "#10B981";
-    if (confidence >= 0.5) return "#F59E0B";
-    return "#EF4444";
   };
 
   const groupArrivalsByRoute = (arrivals: Arrival[]): ArrivalGroup[] => {
@@ -318,59 +244,6 @@ export const StationModal: React.FC<StationModalProps> = ({
             </View>
           </View>
 
-          {/* Crowd Level Card */}
-          {(crowdLoading || crowdData) && (
-            <View style={styles.crowdCard}>
-              <Text style={styles.crowdTitle}>Crowd Level</Text>
-              <View style={styles.crowdRow}>
-                <View style={styles.crowdBars}>
-                  {[1, 2, 3].map((barIndex) => {
-                    if (crowdLoading) {
-                      return (
-                        <View
-                          key={barIndex}
-                          style={[styles.crowdBar, styles.barLoading]}
-                        />
-                      );
-                    }
-                    const level = getCrowdLevel();
-                    const isFilled = barIndex <= getCrowdBarsToFill(level);
-                    return (
-                      <View
-                        key={barIndex}
-                        style={[
-                          styles.crowdBar,
-                          isFilled ? getCrowdBarStyle(level) : styles.barEmpty,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-                <Text style={styles.crowdLabel}>
-                  {crowdLoading ? "Loading..." : CROWD_LABELS[getCrowdLevel()]}
-                </Text>
-              </View>
-
-              {!crowdLoading && crowdData && (
-                <View style={styles.confidenceContainer}>
-                  <View
-                    style={[
-                      styles.confidenceDot,
-                      {
-                        backgroundColor: getConfidenceColor(
-                          crowdData.prediction.confidence
-                        ),
-                      },
-                    ]}
-                  />
-                  <Text style={styles.confidenceText}>
-                    {crowdData.prediction.confidence_description} confidence
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-
           {/* Arrivals Section - Minimalistic Card Style */}
           <View style={styles.arrivalsCard}>
             <View style={styles.arrivalsHeader}>
@@ -429,6 +302,9 @@ export const StationModal: React.FC<StationModalProps> = ({
                               {formatArrivalTime(arrival.minutes)}
                             </Text>
                             <View style={styles.arrivalRight}>
+                              <View style={styles.arrivalCrowd}>
+                                <CrowdBars crowd={arrival.crowd} />
+                              </View>
                               <View style={[styles.statusBadge, { backgroundColor: getStatusBgColor(arrival.status) }]}>
                                 <Text style={[styles.arrivalStatus, { color: getStatusColor(arrival.status) }]}>
                                   {arrival.status}
@@ -507,75 +383,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#1a1a1a",
     fontWeight: "600",
-  },
-  crowdCard: {
-    marginHorizontal: 18,
-    marginBottom: 12,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  crowdTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1a1a1a",
-    letterSpacing: 0.3,
-    marginBottom: 12,
-  },
-  crowdRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  crowdBars: {
-    flexDirection: "row",
-    gap: 3,
-    marginRight: 10,
-  },
-  crowdBar: {
-    width: 8,
-    height: 20,
-    borderRadius: 3,
-  },
-  barGreen: {
-    backgroundColor: "#10B981",
-  },
-  barYellow: {
-    backgroundColor: "#F59E0B",
-  },
-  barRed: {
-    backgroundColor: "#EF4444",
-  },
-  barEmpty: {
-    backgroundColor: "#E5E7EB",
-  },
-  barLoading: {
-    backgroundColor: "#D1D5DB",
-  },
-  crowdLabel: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#1a1a1a",
-  },
-  confidenceContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
-  },
-  confidenceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  confidenceText: {
-    fontSize: 12,
-    color: "#666666",
-    fontWeight: "500",
   },
   arrivalsCard: {
     marginHorizontal: 18,
@@ -697,6 +504,9 @@ const styles = StyleSheet.create({
   arrivalRight: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  arrivalCrowd: {
+    marginRight: 10,
   },
   arrivalChevron: {
     fontSize: 20,

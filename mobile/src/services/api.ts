@@ -37,6 +37,16 @@ export interface Stop {
   parent_station?: string;
 }
 
+// Estimated crowding of one train (see backend/app/services/crowd_service.py)
+export interface TrainCrowd {
+  level: "low" | "medium" | "high" | "very_high";
+  label: string;
+  estimated_riders: number;
+  capacity: number;
+  load_factor: number;
+  gap_factor?: number;
+}
+
 export interface Arrival {
   route: string;
   minutes: number;
@@ -44,6 +54,7 @@ export interface Arrival {
   status: string;
   arrival_time?: number;
   trip_id?: string;
+  crowd?: TrainCrowd | null; // how full this train is leaving the station
 }
 
 export interface MapStation {
@@ -93,26 +104,6 @@ export interface RealtimeUpdate {
 }
 
 // <T> here is a placeholder Type --> covers every possible ApiResponse
-export interface CrowdPrediction {
-  station_id: string;
-  route_id?: string;
-  prediction: {
-    crowd_level: "low" | "medium" | "high" | "very_high";
-    confidence: number;
-    confidence_description: string;
-    method: string;
-    timestamp: string;
-    factors: string[];
-    data_points_used?: number;
-  };
-  historical_data?: {
-    average_crowd: number;
-    peak_hours: string[];
-    trends: string[];
-    data_source?: string;
-  };
-}
-
 export interface TrainStop {
   id: string;
   name: string;
@@ -121,6 +112,7 @@ export interface TrainStop {
   parent_station: string;
   arrival_time?: number;
   minutes?: number;
+  crowd?: TrainCrowd | null; // as the train leaves this stop
 }
 
 export interface TrainLocation {
@@ -133,6 +125,7 @@ export interface TrainLocation {
   previous_stop: TrainStop | null;
   next_stop: TrainStop;
   upcoming_stops: TrainStop[];
+  crowd: TrainCrowd | null; // right now
   path: { latitude: number; longitude: number }[]; // remaining track, for the map
   updated_at: number;
 }
@@ -278,8 +271,4 @@ export const apiService = {
     );
   },
 
-  // Crowd Prediction
-  async getCrowdPrediction(stationId: string): Promise<ApiResponse<CrowdPrediction>> {
-    return apiRequest<CrowdPrediction>(`/crowd/prediction/${stationId}`);
-  },
 };

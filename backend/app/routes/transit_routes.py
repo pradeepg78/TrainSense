@@ -282,6 +282,9 @@ def get_realtime_updates(stop_id):
                 seen_trips.add(key)
                 unique_arrivals.append(arr)
         all_arrivals = unique_arrivals
+
+        from app.services.train_service import add_crowding_to_arrivals
+        add_crowding_to_arrivals(all_arrivals)
         
         return jsonify({
             'success': True,

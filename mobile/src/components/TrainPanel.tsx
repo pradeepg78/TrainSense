@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Stop, TrainLocation, TrainStop } from "../services/api";
 import { getMtaColor } from "../utils/mtaColors";
+import { CrowdBars } from "./CrowdBars";
 import RouteSymbol from "./RouteSymbol";
 
 interface TrainPanelProps {
@@ -110,6 +111,11 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
         </View>
       )}
       {kind !== "passed" && (
+        <View style={styles.stopCrowd}>
+          <CrowdBars crowd={stop.crowd} showLabel={false} />
+        </View>
+      )}
+      {kind !== "passed" && (
         <Text style={styles.stopMinutes}>{formatMinutes(stop.minutes)}</Text>
       )}
     </View>
@@ -128,6 +134,15 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
   );
 
   const upcoming = train?.upcoming_stops ?? [];
+
+  // Explain when spacing makes this train busier or emptier than usual
+  const gapNote = (() => {
+    const factor = train?.crowd?.gap_factor;
+    if (!factor) return "";
+    if (factor >= 1.3) return "Running after a long gap, so busier than usual";
+    if (factor <= 0.75) return "Right behind another train, so emptier than usual";
+    return "";
+  })();
 
   return (
     <View style={styles.panel}>
@@ -161,6 +176,17 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
         </View>
       )}
 
+      {train?.crowd && (
+        <View style={styles.crowdSection}>
+          <CrowdBars crowd={train.crowd} size="large" />
+          <Text style={styles.crowdDetail}>
+            ~{train.crowd.estimated_riders.toLocaleString()} riders ·{" "}
+            {Math.round(train.crowd.load_factor * 100)}% of capacity
+          </Text>
+          {!!gapNote && <Text style={styles.crowdNote}>{gapNote}</Text>}
+        </View>
+      )}
+
       {train && (
         <ScrollView style={styles.stopList} contentContainerStyle={styles.stopListContent}>
           {train.previous_stop && !isStopped && renderStop(train.previous_stop, "passed", false)}
@@ -175,7 +201,9 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
         </ScrollView>
       )}
 
-      {train && <Text style={styles.footer}>Live position · updates every 30s</Text>}
+      {train && <Text style={styles.footer}>
+          Live position · updates every 30s · Crowding estimated from MTA ridership data
+        </Text>}
     </View>
   );
 };
@@ -320,6 +348,26 @@ const styles = StyleSheet.create({
   },
   stopNameCurrent: {
     fontWeight: "700",
+  },
+  stopCrowd: {
+    marginLeft: 8,
+  },
+  crowdSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0, 0, 0, 0.08)",
+  },
+  crowdDetail: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#666666",
+  },
+  crowdNote: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#1a1a1a",
   },
   stopMinutes: {
     minWidth: 44,
