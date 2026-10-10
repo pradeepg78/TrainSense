@@ -126,9 +126,10 @@ class GTFSImporter:
                     name=stop_data['stop_name'],
                     latitude=float(stop_data['stop_lat']),
                     longitude=float(stop_data['stop_lon']),
-                    zone_id=stop_data.get('zone_id'),
-                    location_type=int(stop_data.get('location_type', 0)),
-                    parent_station=stop_data.get('parent_station')
+                    # GTFS leaves optional fields blank rather than omitting them
+                    zone_id=stop_data.get('zone_id') or None,
+                    location_type=int(stop_data.get('location_type') or 0),
+                    parent_station=stop_data.get('parent_station') or None
                 )
                 
                 # Check if stop already exists
