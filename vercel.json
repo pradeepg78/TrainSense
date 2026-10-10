@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd mobile && npm install && npx expo export --platform web && cp -r showcase dist/showcase",
+  "outputDirectory": "mobile/dist",
+  "installCommand": "echo 'dependencies installed inside buildCommand'",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "backend/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ]
+}

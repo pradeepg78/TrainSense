@@ -34,7 +34,11 @@ yarn-error.log*
 *.tsbuildinfo
 
 # Testing
-coverage/backend/instance/
-backend/venv/
+coverage/
+
+# Python
 backend/instance/
 backend/venv/
+backend/.venv/
+__pycache__/
+*.pyc

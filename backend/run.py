@@ -1,15 +1,22 @@
 # backend/run.py
 # Entry point for flask application
+
+#open app/ and open __init__.py and grab the create_app function and db SQLAlchemy db
 from app import create_app, db
+#g to config.py and grab Config class --> this class holds all the settings: db path, API key, etc. 
 from config import Config
 
-# Import models so they're registered with SQLAlchemy
+# Import models so they're registered with 
+# go to app/models/transit.py and grab the 3 db model classes
 from app.models.transit import Route, Stop, Trip
 
 # Create Flask app
+# this function builds the entire flask app, connects db, enables CORS, registers all API routes, returns app object
 app = create_app()
 
 # Preload the configuration for flask shell
+# when someone runs flask shell, automatially make thse variables availible
+# flask shell is a dev tool, opens a Python terminal with app loaded so you can type commands directly w/o writing a script
 @app.shell_context_processor
 def make_shell_context():
     """Make database models available in Flask shell"""
@@ -23,7 +30,7 @@ def make_shell_context():
 
 # This line means "only run this if the file is executed directly"
 if __name__ == '__main__':
-    # Validate configuration, aka check if MTA_API_KEY is valid
+    # validate_config is just a method in the Config class that checks whetger required settings like api key are present
     if Config.validate_config():
         print("Configuration validated successfully")
     else:

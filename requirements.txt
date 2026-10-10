@@ -1,0 +1,15 @@
+# Trimmed dependencies for the Vercel serverless API (read + realtime endpoints).
+# Heavy data-loading deps (pandas, numpy) are intentionally excluded — they are
+# only used by the /api/data/load admin endpoints, which import them lazily and
+# are not needed for the live demo. The full set lives in backend/requirements.txt.
+Flask==3.0.0
+Flask-CORS==4.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+SQLAlchemy==2.0.23
+requests==2.31.0
+python-dotenv==1.0.0
+gtfs-realtime-bindings==1.0.0
+protobuf==4.25.1
+python-dateutil==2.8.2
+pytz==2023.3

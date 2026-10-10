@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrainSense — Live Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 80% -10%, #2a2f45 0%, #14161f 55%, #0b0c12 100%);
+      color: #e8eaf0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 72px;
+      min-height: 100vh;
+      padding: 48px 56px;
+      flex-wrap: wrap;
+    }
+
+    /* ---- Left: text column ---- */
+    .copy {
+      max-width: 440px;
+      text-align: left;
+    }
+    .eyebrow {
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7e88a8;
+      margin-bottom: 18px;
+    }
+    .copy h1 {
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1.04;
+      letter-spacing: -0.025em;
+      margin-bottom: 20px;
+      background: linear-gradient(90deg, #fff, #b9c2da);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .copy p {
+      color: #9aa3bd;
+      font-size: 17px;
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .stack {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      font-size: 13px;
+      color: #c4ccdf;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      padding: 6px 12px;
+      border-radius: 999px;
+    }
+
+    /* ---- Right: phone frame ---- */
+    .phone {
+      position: relative;
+      flex: none;
+      width: 400px;
+      height: 880px;
+      background: #0a0a0c;
+      border-radius: 60px;
+      padding: 13px;
+      box-shadow:
+        0 0 0 2px #2c2f38,
+        0 0 0 12px #15171d,
+        0 0 0 14px #3a3d49,
+        0 50px 90px -20px rgba(0, 0, 0, 0.75),
+        0 24px 60px -30px rgba(0, 0, 0, 0.9);
+    }
+    /* Side buttons */
+    .phone::before {
+      content: "";
+      position: absolute;
+      left: -3px;
+      top: 190px;
+      width: 3px;
+      height: 66px;
+      background: #2a2d36;
+      border-radius: 2px 0 0 2px;
+      box-shadow: 0 96px 0 #2a2d36, 0 -90px 0 0 #2a2d36;
+    }
+    .phone::after {
+      content: "";
+      position: absolute;
+      right: -3px;
+      top: 244px;
+      width: 3px;
+      height: 100px;
+      background: #2a2d36;
+      border-radius: 0 2px 2px 0;
+    }
+
+    .screen {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 48px;
+      overflow: hidden;
+      background: #f5f5f5;
+    }
+    .screen iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+
+    /* Dynamic island */
+    .island {
+      position: absolute;
+      top: 13px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 124px;
+      height: 36px;
+      background: #000;
+      border-radius: 20px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* Stack vertically on narrow screens */
+    @media (max-width: 920px) {
+      body { flex-direction: column; gap: 40px; padding: 40px 20px; }
+      .copy { text-align: center; max-width: 520px; }
+      .stack { justify-content: center; }
+      .copy h1 { font-size: 40px; }
+    }
+    @media (max-height: 940px) and (min-width: 921px) {
+      .phone { transform: scale(0.88); transform-origin: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="copy">
+    <span class="eyebrow">Mobile App · Live Demo</span>
+    <h1>TrainSense</h1>
+    <p>A real-time NYC subway companion. This is the live React&nbsp;Native app running right in the browser — pan the map, zoom past street level to reveal stations, and tap any station for real-time arrivals.</p>
+    <div class="stack">
+      <span class="chip">React Native (Expo)</span>
+      <span class="chip">Mapbox</span>
+      <span class="chip">Flask API</span>
+      <span class="chip">MTA GTFS</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="island"></div>
+    <div class="screen">
+      <iframe
+        id="app"
+        title="TrainSense app"
+        allow="geolocation"
+        loading="eager">
+      </iframe>
+      <script>
+        // Local preview: showcase is served on :4174, the app on :4173.
+        // Deployed (Vercel): the app lives at the same origin's root ("/").
+        (function () {
+          var local = location.port === "4174" || location.protocol === "file:";
+          document.getElementById("app").src = local ? "http://localhost:4173" : "/";
+        })();
+      </script>
+    </div>
+  </div>
+</body>
+</html>
