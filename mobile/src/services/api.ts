@@ -2,13 +2,14 @@
 import { Platform } from 'react-native';
 
 // On web, call the API on the same origin (`/api`) so the deployed Vercel build
-// reaches its bundled serverless backend with no CORS. During local web preview
-// (the static export served on :4173) there is no same-origin backend, so fall
-// back to the local Flask dev server. Native always uses the local dev server.
+// reaches its bundled serverless backend with no CORS. When running locally
+// (Expo dev server on :8081, static preview on :4173, etc.) there is no
+// same-origin backend, so fall back to the local Flask dev server.
+// Native always uses the local dev server.
 const resolveBaseUrl = (): string => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    const isLocalPreview = window.location.port === '4173';
-    return isLocalPreview ? 'http://127.0.0.1:5001/api' : '/api';
+    const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    return isLocal ? 'http://127.0.0.1:5001/api' : '/api';
   }
   return 'http://127.0.0.1:5001/api';
 };
