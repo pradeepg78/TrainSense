@@ -270,6 +270,18 @@ def get_realtime_updates(stop_id):
         
         # Sort by soonest arrival
         all_arrivals.sort(key=lambda x: x.get('arrival_time', 0))
+
+        # A station and its platforms (718, 718N, 718S) are all queried above
+        # and each lookup already covers the platforms, so the same train shows
+        # up several times. A trip stops at a station once; keep its soonest.
+        seen_trips = set()
+        unique_arrivals = []
+        for arr in all_arrivals:
+            key = arr.get('trip_id') or id(arr)
+            if key not in seen_trips:
+                seen_trips.add(key)
+                unique_arrivals.append(arr)
+        all_arrivals = unique_arrivals
         
         return jsonify({
             'success': True,

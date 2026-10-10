@@ -8,6 +8,9 @@ from app.models.transit import Route, Stop, Trip, StopRoute
 
 logger = logging.getLogger(__name__)
 
+# Arrivals predicted further in the past than this are stale feed entries
+STALE_ARRIVAL_SECONDS = 60
+
 class RealtimeDataService:
     """Service for handling MTA real-time data"""
     
@@ -85,6 +88,11 @@ class RealtimeDataService:
                     feeds_to_check.add(feed_id)
             if not feeds_to_check:
                 feeds_to_check = set(self.FEED_MAPPINGS.keys())  # fallback: check all feeds
+            # The 7 shares the 1-6 feed URL; fetch each URL only once
+            feeds_by_url = {}
+            for feed_id in sorted(feeds_to_check):
+                feeds_by_url.setdefault(self.FEED_URLS.get(feed_id, feed_id), feed_id)
+            feeds_to_check = set(feeds_by_url.values())
 
             logger.info(f"Checking feeds: {feeds_to_check}")
             found_stop_ids = set()
@@ -415,6 +423,10 @@ class RealtimeDataService:
                         # Calculate arrival time
                         if stop_time_update.HasField('arrival'):
                             arrival_time = stop_time_update.arrival.time
+                            # The feed keeps stale trips whose predicted times
+                            # are long past; don't show those as "Arriving"
+                            if arrival_time < current_time - STALE_ARRIVAL_SECONDS:
+                                continue
                             minutes = max(0, (arrival_time - current_time) // 60)
                             
                             # Only include arrivals in the next 30 minutes
