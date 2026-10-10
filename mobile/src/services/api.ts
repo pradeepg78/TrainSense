@@ -92,6 +92,26 @@ export interface RealtimeUpdate {
 }
 
 // <T> here is a placeholder Type --> covers every possible ApiResponse
+export interface CrowdPrediction {
+  station_id: string;
+  route_id?: string;
+  prediction: {
+    crowd_level: "low" | "medium" | "high" | "very_high";
+    confidence: number;
+    confidence_description: string;
+    method: string;
+    timestamp: string;
+    factors: string[];
+    data_points_used?: number;
+  };
+  historical_data?: {
+    average_crowd: number;
+    peak_hours: string[];
+    trends: string[];
+    data_source?: string;
+  };
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -224,5 +244,10 @@ export const apiService = {
   // Route Shape
   async getRouteShape(routeId: string): Promise<ApiResponse<any>> {
     return apiRequest<any>(`/route-shape/${routeId}`);
+  },
+
+  // Crowd Prediction
+  async getCrowdPrediction(stationId: string): Promise<ApiResponse<CrowdPrediction>> {
+    return apiRequest<CrowdPrediction>(`/crowd/prediction/${stationId}`);
   },
 };
