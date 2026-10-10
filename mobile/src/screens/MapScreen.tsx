@@ -5,7 +5,8 @@ import Mapbox, {
   LineLayer,
   MapView,
   MarkerView,
-  ShapeSource
+  ShapeSource,
+  SymbolLayer
 } from "@rnmapbox/maps";
 import Constants from "expo-constants";
 import * as Location from "expo-location";
@@ -25,6 +26,7 @@ import { Arrival, Stop } from "../services/api";
 import { getMtaColor } from "../utils/mtaColors";
 import {
   lineServiceForRoute,
+  originStationGeoJSON,
   stationRouteForRoute,
   trainBounds,
   trainToPathGeoJSON,
@@ -110,6 +112,7 @@ const MapScreen = () => {
   const { train, loading: trainLoading, error: trainError } = useTrainTracking(trackedTrain);
 
   const trainPathGeoJSON = useMemo(() => trainToPathGeoJSON(train), [train]);
+  const originGeoJSON = useMemo(() => originStationGeoJSON(originStation), [originStation]);
 
   // While tracking, fade every line and station not served by the tracked train
   const trackedService = trackedTrain ? lineServiceForRoute(trackedTrain.routeId) : null;
@@ -125,7 +128,7 @@ const MapScreen = () => {
   useEffect(() => {
     if (!train) return;
     const [sw, ne] = trainBounds(train, originStation ? [originStation] : []);
-    cameraRef.current?.fitBounds(ne, sw, [80, 90, 320, 40], 600);
+    cameraRef.current?.fitBounds(ne, sw, [80, 90, 420, 40], 600);
   }, [train?.trip_id]);
 
   // Get user location
@@ -486,20 +489,31 @@ const MapScreen = () => {
         )}
         
         {/* Station the user started from */}
-        {trackedTrain && originStation && (
-          <MarkerView
-            coordinate={[originStation.longitude, originStation.latitude]}
-            anchor={{ x: 0.5, y: 1 }}
-          >
-            <View style={{ alignItems: 'center' }}>
-              <View style={styles.originMarker}>
-                <Text style={styles.originMarkerText} numberOfLines={1}>
-                  {originStation.name}
-                </Text>
-              </View>
-              <View style={styles.originMarkerPin} />
-            </View>
-          </MarkerView>
+        {trackedTrain && originGeoJSON && (
+          <ShapeSource id="origin-station" shape={originGeoJSON}>
+            <CircleLayer
+              id="origin-station-dot"
+              style={{
+                circleRadius: 6,
+                circleColor: '#FFFFFF',
+                circleStrokeColor: '#1a1a1a',
+                circleStrokeWidth: 3,
+              }}
+            />
+            <SymbolLayer
+              id="origin-station-label"
+              style={{
+                textField: ['get', 'name'],
+                textSize: 13,
+                textAnchor: 'left',
+                textOffset: [0.9, 0],
+                textAllowOverlap: true,
+                textColor: '#1a1a1a',
+                textHaloColor: '#FFFFFF',
+                textHaloWidth: 1.5,
+              }}
+            />
+          </ShapeSource>
         )}
 
         {/* Tracked train's live position */}
@@ -635,19 +649,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   trainMarkerEmoji: { fontSize: 20 },
-  originMarker: {
-    backgroundColor: '#1a1a1a',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    maxWidth: 180,
-  },
-  originMarkerText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  originMarkerPin: {
-    width: 2,
-    height: 10,
-    backgroundColor: '#1a1a1a',
-  },
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",

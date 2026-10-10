@@ -1,6 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -184,8 +185,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 12,
     right: 12,
-    bottom: 24,
-    maxHeight: "45%",
+    // Clear the floating tab bar (see MinimalTabBar in App.tsx)
+    bottom: Platform.OS === "ios" ? 108 : 100,
+    maxHeight: "40%",
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
     padding: 16,
@@ -259,6 +261,7 @@ const styles = StyleSheet.create({
   },
   stopListContent: {
     paddingBottom: 4,
+    paddingRight: 12,
   },
   stopRow: {
     flexDirection: "row",
@@ -319,6 +322,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   stopMinutes: {
+    minWidth: 44,
+    textAlign: "right",
     fontSize: 13,
     fontWeight: "600",
     color: "#1a1a1a",

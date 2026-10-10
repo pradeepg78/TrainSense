@@ -12,6 +12,7 @@ import { Arrival, Stop } from "../services/api";
 import { getMtaColor } from "../utils/mtaColors";
 import {
   lineServiceForRoute,
+  originStationGeoJSON,
   stationRouteForRoute,
   trainBounds,
   trainToPathGeoJSON,
@@ -194,6 +195,7 @@ const MapScreen = () => {
   };
 
   const trainPathGeoJSON = useMemo(() => trainToPathGeoJSON(train), [train]);
+  const originGeoJSON = useMemo(() => originStationGeoJSON(originStation), [originStation]);
 
   // While tracking, fade every line and station not served by the tracked train
   const trackedService = trackedTrain ? lineServiceForRoute(trackedTrain.routeId) : null;
@@ -210,7 +212,7 @@ const MapScreen = () => {
     if (!train) return;
     const [sw, ne] = trainBounds(train, originStation ? [originStation] : []);
     mapRef.current?.fitBounds([sw, ne], {
-      padding: { top: 80, bottom: 320, left: 40, right: 90 },
+      padding: { top: 80, bottom: 420, left: 40, right: 90 },
       maxZoom: 15,
       duration: 600,
     });
@@ -318,19 +320,35 @@ const MapScreen = () => {
         )}
 
         {/* Station the user started from */}
-        {trackedTrain && originStation && (
-          <Marker
-            longitude={originStation.longitude}
-            latitude={originStation.latitude}
-            anchor="bottom"
-          >
-            <View style={styles.originMarker}>
-              <Text style={styles.originMarkerText} numberOfLines={1}>
-                {originStation.name}
-              </Text>
-            </View>
-            <View style={styles.originMarkerPin} />
-          </Marker>
+        {trackedTrain && originGeoJSON && (
+          <Source id="origin-station" type="geojson" data={originGeoJSON}>
+            <Layer
+              id="origin-station-dot"
+              type="circle"
+              paint={{
+                "circle-radius": 6,
+                "circle-color": "#FFFFFF",
+                "circle-stroke-color": "#1a1a1a",
+                "circle-stroke-width": 3,
+              }}
+            />
+            <Layer
+              id="origin-station-label"
+              type="symbol"
+              layout={{
+                "text-field": ["get", "name"],
+                "text-size": 13,
+                "text-anchor": "left",
+                "text-offset": [0.9, 0],
+                "text-allow-overlap": true,
+              }}
+              paint={{
+                "text-color": "#1a1a1a",
+                "text-halo-color": "#FFFFFF",
+                "text-halo-width": 1.5,
+              }}
+            />
+          </Source>
         )}
 
         {/* Tracked train's live position */}
@@ -493,20 +511,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   trainMarkerEmoji: { fontSize: 20 },
-  originMarker: {
-    backgroundColor: "#1a1a1a",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    maxWidth: 180,
-  },
-  originMarkerText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  originMarkerPin: {
-    alignSelf: "center",
-    width: 2,
-    height: 10,
-    backgroundColor: "#1a1a1a",
-  },
   stationBadgeText: { fontSize: 13, fontWeight: "600", color: "#3a3a3a", letterSpacing: 0.2 },
 });
 

@@ -27,6 +27,19 @@ export const trainToPositionGeoJSON = (train: TrainLocation | null) =>
 
 type LatLng = { latitude: number; longitude: number };
 
+// Point feature for the station the user started from, labelled with its name
+export const originStationGeoJSON = (station: (LatLng & { name: string }) | null) =>
+  station
+    ? {
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [station.longitude, station.latitude],
+        },
+        properties: { name: station.name },
+      }
+    : null;
+
 // [southwest, northeast] around the train, its next few stops, and any extra
 // points that should stay in view (e.g. the station the user tapped)
 export const trainBounds = (
