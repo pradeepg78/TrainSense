@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import Map, { Layer, MapRef, Source } from "react-map-gl";
+import Map, { Layer, MapRef, Marker, Source } from "react-map-gl";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { StationModal } from "../components/StationModal";
@@ -10,7 +10,12 @@ import { TrainPanel } from "../components/TrainPanel";
 import { TrackedTrain, useTrainTracking } from "../hooks/useTrainTracking";
 import { Arrival, Stop } from "../services/api";
 import { getMtaColor } from "../utils/mtaColors";
-import { trainBounds, trainToPathGeoJSON, trainToPositionGeoJSON } from "../utils/trainGeo";
+import {
+  lineServiceForRoute,
+  stationRouteForRoute,
+  trainBounds,
+  trainToPathGeoJSON,
+} from "../utils/trainGeo";
 
 // Import local subway lines and stops data
 import subwayLinesData from "../assets/subway-lines.json";
@@ -57,6 +62,8 @@ const MapScreen = () => {
   const [subwayLinesGeoJSON, setSubwayLinesGeoJSON] = useState<any>(null);
   const [subwayStopsGeoJSON, setSubwayStopsGeoJSON] = useState<any>(null);
   const [trackedTrain, setTrackedTrain] = useState<TrackedTrain | null>(null);
+  // Station the user opened before picking a train; stays marked on the map
+  const [originStation, setOriginStation] = useState<Stop | null>(null);
   const { train, loading: trainLoading, error: trainError } = useTrainTracking(trackedTrain);
 
   // User location stays at Manhattan center (mirrors native behavior)
@@ -175,18 +182,33 @@ const MapScreen = () => {
 
   const handleTrainPress = (arrival: Arrival) => {
     if (!arrival.trip_id) return;
+    setOriginStation(selectedStation);
     setShowStationModal(false);
     setSelectedStation(null);
     setTrackedTrain({ tripId: arrival.trip_id, routeId: arrival.route });
   };
 
+  const handleStopTracking = () => {
+    setTrackedTrain(null);
+    setOriginStation(null);
+  };
+
   const trainPathGeoJSON = useMemo(() => trainToPathGeoJSON(train), [train]);
-  const trainPositionGeoJSON = useMemo(() => trainToPositionGeoJSON(train), [train]);
+
+  // While tracking, fade every line and station not served by the tracked train
+  const trackedService = trackedTrain ? lineServiceForRoute(trackedTrain.routeId) : null;
+  const trackedStationRoute = trackedTrain ? stationRouteForRoute(trackedTrain.routeId) : null;
+  const lineOpacity: any = trackedService
+    ? ["case", ["==", ["get", "service"], trackedService], 1, 0.12]
+    : 1;
+  const stationOpacity: any = trackedStationRoute
+    ? ["case", ["in", trackedStationRoute, ["coalesce", ["get", "daytime_routes"], ""]], 1, 0.15]
+    : 1;
 
   // Frame the train and its next few stops when tracking starts
   useEffect(() => {
     if (!train) return;
-    const [sw, ne] = trainBounds(train);
+    const [sw, ne] = trainBounds(train, originStation ? [originStation] : []);
     mapRef.current?.fitBounds([sw, ne], {
       padding: { top: 80, bottom: 320, left: 40, right: 90 },
       maxZoom: 15,
@@ -251,7 +273,11 @@ const MapScreen = () => {
               id="subway-lines-layer"
               type="line"
               layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{ "line-color": ["get", "color"], "line-width": 3 }}
+              paint={{
+                "line-color": ["get", "color"],
+                "line-width": 3,
+                "line-opacity": lineOpacity,
+              }}
             />
           </Source>
         )}
@@ -284,33 +310,45 @@ const MapScreen = () => {
                 "circle-color": "#FFFFFF",
                 "circle-stroke-color": "#1a1a1a",
                 "circle-stroke-width": 1.2,
+                "circle-opacity": stationOpacity,
+                "circle-stroke-opacity": stationOpacity,
               }}
             />
           </Source>
         )}
 
-        {trackedTrain && trainPositionGeoJSON && (
-          <Source id="train-position" type="geojson" data={trainPositionGeoJSON}>
-            <Layer
-              id="train-position-halo"
-              type="circle"
-              paint={{
-                "circle-radius": 16,
-                "circle-color": getMtaColor(trackedTrain.routeId).background,
-                "circle-opacity": 0.25,
-              }}
-            />
-            <Layer
-              id="train-position-dot"
-              type="circle"
-              paint={{
-                "circle-radius": 9,
-                "circle-color": getMtaColor(trackedTrain.routeId).background,
-                "circle-stroke-color": "#FFFFFF",
-                "circle-stroke-width": 3,
-              }}
-            />
-          </Source>
+        {/* Station the user started from */}
+        {trackedTrain && originStation && (
+          <Marker
+            longitude={originStation.longitude}
+            latitude={originStation.latitude}
+            anchor="bottom"
+          >
+            <View style={styles.originMarker}>
+              <Text style={styles.originMarkerText} numberOfLines={1}>
+                {originStation.name}
+              </Text>
+            </View>
+            <View style={styles.originMarkerPin} />
+          </Marker>
+        )}
+
+        {/* Tracked train's live position */}
+        {trackedTrain && train && (
+          <Marker
+            longitude={train.position.longitude}
+            latitude={train.position.latitude}
+            anchor="center"
+          >
+            <View
+              style={[
+                styles.trainMarker,
+                { borderColor: getMtaColor(trackedTrain.routeId).background },
+              ]}
+            >
+              <Text style={styles.trainMarkerEmoji}>🚆</Text>
+            </View>
+          </Marker>
         )}
 
         {/* User location dot (rendered last so it's on top) */}
@@ -378,7 +416,8 @@ const MapScreen = () => {
           train={train}
           loading={trainLoading}
           error={trainError}
-          onClose={() => setTrackedTrain(null)}
+          originStation={originStation}
+          onClose={handleStopTracking}
         />
       )}
 
@@ -439,6 +478,34 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3,
+  },
+  trainMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 3,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  trainMarkerEmoji: { fontSize: 20 },
+  originMarker: {
+    backgroundColor: "#1a1a1a",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    maxWidth: 180,
+  },
+  originMarkerText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  originMarkerPin: {
+    alignSelf: "center",
+    width: 2,
+    height: 10,
+    backgroundColor: "#1a1a1a",
   },
   stationBadgeText: { fontSize: 13, fontWeight: "600", color: "#3a3a3a", letterSpacing: 0.2 },
 });

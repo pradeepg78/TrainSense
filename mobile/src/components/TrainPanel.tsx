@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { TrainLocation, TrainStop } from "../services/api";
+import { Stop, TrainLocation, TrainStop } from "../services/api";
 import { getMtaColor } from "../utils/mtaColors";
 import RouteSymbol from "./RouteSymbol";
 
@@ -16,8 +16,19 @@ interface TrainPanelProps {
   train: TrainLocation | null;
   loading: boolean;
   error: string | null;
+  // The station the user opened before choosing this train
+  originStation?: Stop | null;
   onClose: () => void;
 }
+
+const metersBetween = (
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number }
+) => {
+  const dLat = (a.latitude - b.latitude) * 111320;
+  const dLon = (a.longitude - b.longitude) * 111320 * Math.cos((a.latitude * Math.PI) / 180);
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+};
 
 const formatMinutes = (minutes?: number): string => {
   if (minutes === undefined) return "";
@@ -31,6 +42,7 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
   train,
   loading,
   error,
+  originStation,
   onClose,
 }) => {
   const lineColor = getMtaColor(routeId).background;
@@ -43,6 +55,24 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
       return `Between ${train.previous_stop.name} and ${train.next_stop.name}`;
     }
     return `Approaching ${train.next_stop.name}`;
+  })();
+
+  // Transfer complexes (e.g. Times Sq) use a different stop id per line, so
+  // also treat any stop within ~300m of the tapped station as the same place
+  const isOriginStop = (stop: TrainStop) =>
+    !!originStation &&
+    (stop.parent_station === originStation.id ||
+      metersBetween(stop, originStation) < 300);
+  const originUpcoming = train?.upcoming_stops.find(isOriginStop);
+
+  const originText = (() => {
+    if (!train || !originStation) return "";
+    if (originUpcoming) {
+      return originUpcoming.minutes && originUpcoming.minutes > 0
+        ? `Reaches ${originStation.name} in ${originUpcoming.minutes} min`
+        : `Arriving at ${originStation.name} now`;
+    }
+    return `Already left ${originStation.name}`;
   })();
 
   const renderStop = (stop: TrainStop, kind: "passed" | "current" | "upcoming", isLast: boolean) => (
@@ -73,6 +103,11 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
       >
         {stop.name}
       </Text>
+      {kind !== "passed" && isOriginStop(stop) && (
+        <View style={styles.yourStopBadge}>
+          <Text style={styles.yourStopText}>Your stop</Text>
+        </View>
+      )}
       {kind !== "passed" && (
         <Text style={styles.stopMinutes}>{formatMinutes(stop.minutes)}</Text>
       )}
@@ -106,6 +141,7 @@ export const TrainPanel: React.FC<TrainPanelProps> = ({
               {statusText}
             </Text>
           )}
+          {!!originText && <Text style={styles.originText}>{originText}</Text>}
         </View>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <Text style={styles.closeButtonText}>✕</Text>
@@ -177,6 +213,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#666666",
     marginTop: 2,
+  },
+  originText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1a1a1a",
+    marginTop: 2,
+  },
+  yourStopBadge: {
+    backgroundColor: "#1a1a1a",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  yourStopText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   closeButton: {
     width: 30,

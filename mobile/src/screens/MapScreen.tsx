@@ -4,6 +4,7 @@ import Mapbox, {
   CircleLayer,
   LineLayer,
   MapView,
+  MarkerView,
   ShapeSource
 } from "@rnmapbox/maps";
 import Constants from "expo-constants";
@@ -22,7 +23,12 @@ import { TrainPanel } from "../components/TrainPanel";
 import { TrackedTrain, useTrainTracking } from "../hooks/useTrainTracking";
 import { Arrival, Stop } from "../services/api";
 import { getMtaColor } from "../utils/mtaColors";
-import { trainBounds, trainToPathGeoJSON, trainToPositionGeoJSON } from "../utils/trainGeo";
+import {
+  lineServiceForRoute,
+  stationRouteForRoute,
+  trainBounds,
+  trainToPathGeoJSON,
+} from "../utils/trainGeo";
 
 const { width, height } = Dimensions.get("window");
 
@@ -99,15 +105,26 @@ const MapScreen = () => {
 
   const cameraRef = useRef<Camera>(null);
   const [trackedTrain, setTrackedTrain] = useState<TrackedTrain | null>(null);
+  // Station the user opened before picking a train; stays marked on the map
+  const [originStation, setOriginStation] = useState<Stop | null>(null);
   const { train, loading: trainLoading, error: trainError } = useTrainTracking(trackedTrain);
 
   const trainPathGeoJSON = useMemo(() => trainToPathGeoJSON(train), [train]);
-  const trainPositionGeoJSON = useMemo(() => trainToPositionGeoJSON(train), [train]);
+
+  // While tracking, fade every line and station not served by the tracked train
+  const trackedService = trackedTrain ? lineServiceForRoute(trackedTrain.routeId) : null;
+  const trackedStationRoute = trackedTrain ? stationRouteForRoute(trackedTrain.routeId) : null;
+  const lineOpacity: any = trackedService
+    ? ['case', ['==', ['get', 'service'], trackedService], 1, 0.12]
+    : 1;
+  const stationOpacity: any = trackedStationRoute
+    ? ['case', ['in', trackedStationRoute, ['coalesce', ['get', 'daytime_routes'], '']], 1, 0.15]
+    : 1;
 
   // Frame the train and its next few stops when tracking starts
   useEffect(() => {
     if (!train) return;
-    const [sw, ne] = trainBounds(train);
+    const [sw, ne] = trainBounds(train, originStation ? [originStation] : []);
     cameraRef.current?.fitBounds(ne, sw, [80, 90, 320, 40], 600);
   }, [train?.trip_id]);
 
@@ -348,9 +365,15 @@ const MapScreen = () => {
 
   const handleTrainPress = (arrival: Arrival) => {
     if (!arrival.trip_id) return;
+    setOriginStation(selectedStation);
     setShowStationModal(false);
     setSelectedStation(null);
     setTrackedTrain({ tripId: arrival.trip_id, routeId: arrival.route });
+  };
+
+  const handleStopTracking = () => {
+    setTrackedTrain(null);
+    setOriginStation(null);
   };
 
   const onRegionChange = (feature: any) => {
@@ -389,6 +412,7 @@ const MapScreen = () => {
                 style={{
                   lineColor: color,
                   lineWidth: 3,
+                  lineOpacity: lineOpacity,
                   lineCap: 'round',
                   lineJoin: 'round',
                 }}
@@ -454,32 +478,42 @@ const MapScreen = () => {
                 circleColor: '#FFFFFF',
                 circleStrokeColor: '#1a1a1a',
                 circleStrokeWidth: 0.8,
+                circleOpacity: stationOpacity,
+                circleStrokeOpacity: stationOpacity,
               }}
             />
           </ShapeSource>
         )}
         
-        {/* Tracked train: live position */}
-        {trackedTrain && trainPositionGeoJSON && (
-          <ShapeSource id="train-position" shape={trainPositionGeoJSON}>
-            <CircleLayer
-              id="train-position-halo"
-              style={{
-                circleRadius: 16,
-                circleColor: getMtaColor(trackedTrain.routeId).background,
-                circleOpacity: 0.25,
-              }}
-            />
-            <CircleLayer
-              id="train-position-dot"
-              style={{
-                circleRadius: 9,
-                circleColor: getMtaColor(trackedTrain.routeId).background,
-                circleStrokeColor: '#FFFFFF',
-                circleStrokeWidth: 3,
-              }}
-            />
-          </ShapeSource>
+        {/* Station the user started from */}
+        {trackedTrain && originStation && (
+          <MarkerView
+            coordinate={[originStation.longitude, originStation.latitude]}
+            anchor={{ x: 0.5, y: 1 }}
+          >
+            <View style={{ alignItems: 'center' }}>
+              <View style={styles.originMarker}>
+                <Text style={styles.originMarkerText} numberOfLines={1}>
+                  {originStation.name}
+                </Text>
+              </View>
+              <View style={styles.originMarkerPin} />
+            </View>
+          </MarkerView>
+        )}
+
+        {/* Tracked train's live position */}
+        {trackedTrain && train && (
+          <MarkerView coordinate={[train.position.longitude, train.position.latitude]}>
+            <View
+              style={[
+                styles.trainMarker,
+                { borderColor: getMtaColor(trackedTrain.routeId).background },
+              ]}
+            >
+              <Text style={styles.trainMarkerEmoji}>🚆</Text>
+            </View>
+          </MarkerView>
         )}
 
         {/* User location - blue circle dot (rendered last so it's on top) */}
@@ -570,7 +604,8 @@ const MapScreen = () => {
           train={train}
           loading={trainLoading}
           error={trainError}
-          onClose={() => setTrackedTrain(null)}
+          originStation={originStation}
+          onClose={handleStopTracking}
         />
       )}
 
@@ -585,6 +620,34 @@ const MapScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  trainMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 3,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  trainMarkerEmoji: { fontSize: 20 },
+  originMarker: {
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    maxWidth: 180,
+  },
+  originMarkerText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  originMarkerPin: {
+    width: 2,
+    height: 10,
+    backgroundColor: '#1a1a1a',
+  },
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
