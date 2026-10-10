@@ -324,12 +324,14 @@ const MapScreen = () => {
             latitude={originStation.latitude}
             anchor="bottom"
           >
-            <View style={styles.originMarker}>
-              <Text style={styles.originMarkerText} numberOfLines={1}>
-                {originStation.name}
-              </Text>
+            <View style={{ alignItems: "center" }}>
+              <View style={styles.originMarker}>
+                <Text style={styles.originMarkerText} numberOfLines={1}>
+                  {originStation.name}
+                </Text>
+              </View>
+              <View style={styles.originMarkerPin} />
             </View>
-            <View style={styles.originMarkerPin} />
           </Marker>
         )}
 
