@@ -58,3 +58,12 @@ export const lineServiceForRoute = (routeId: string) => LINE_SERVICE_ALIASES[rou
 
 // Station route lists use the base letter (e.g. "6", not "6X")
 export const stationRouteForRoute = (routeId: string) => routeId.replace(/X$/, "");
+
+// Every line segment (subway-lines.json `service`) drawn for a station's routes
+const STATION_ROUTE_SERVICES: { [route: string]: string[] } = {
+  "5": ["5", "5 Peak"],
+  S: ["SF", "SR", "ST"],
+};
+
+export const lineServicesForStationRoutes = (routes: string[]) =>
+  Array.from(new Set(routes.flatMap((r) => STATION_ROUTE_SERVICES[r] || [r])));

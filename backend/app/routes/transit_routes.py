@@ -1123,6 +1123,23 @@ def get_trunk_shapes():
                         })
     
     return jsonify({'success': True, 'data': trunk_segments}) 
+@transit_bp.route('/trains', methods=['GET'])
+def get_trains_on_lines():
+    """
+    Every train running on some lines, for the map: GET /api/trains?routes=A,C,E
+    """
+    from app.services.train_service import trains_on_routes
+
+    routes = [r for r in request.args.get('routes', '').split(',') if r]
+    if not routes:
+        return jsonify({'success': False, 'error': 'routes query parameter is required'}), 400
+    try:
+        return jsonify({'success': True, 'data': trains_on_routes(routes)})
+    except Exception as e:
+        logger.error(f"Error listing trains on {routes}: {e}")
+        return jsonify({'success': False, 'error': 'Couldn\'t load trains'}), 500
+
+
 @transit_bp.route('/trains/<path:trip_id>', methods=['GET'])
 def get_train_location(trip_id):
     """
@@ -1142,3 +1159,87 @@ def get_train_location(trip_id):
     if not train:
         return jsonify({'success': False, 'error': 'Train not found in live feed'}), 404
     return jsonify({'success': True, 'data': train})
+
+
+# ---------- Buses (MTA Bus Time) ----------
+
+def _bounds_from_args():
+    """south,west,north,east from ?bbox=; raises ValueError if malformed"""
+    parts = [float(x) for x in request.args.get('bbox', '').split(',')]
+    if len(parts) != 4:
+        raise ValueError('bbox must be south,west,north,east')
+    south, west, north, east = parts
+    return min(south, north), min(west, east), max(south, north), max(west, east)
+
+
+def _bus_endpoint(fetch):
+    from app.services.bus_service import BusDataError
+    try:
+        return jsonify({'success': True, 'data': fetch()})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except LookupError as e:
+        return jsonify({'success': False, 'error': str(e)}), 404
+    except BusDataError as e:
+        return jsonify({'success': False, 'error': str(e)}), 503
+    except Exception as e:
+        logger.error(f"Bus endpoint error: {e}")
+        return jsonify({'success': False, 'error': 'Something went wrong loading bus data'}), 500
+
+
+@transit_bp.route('/bus/stops', methods=['GET'])
+def get_bus_stops():
+    """Bus stops in a map viewport: GET /api/bus/stops?bbox=south,west,north,east"""
+    from app.services.bus_service import stops_in_bounds
+    return _bus_endpoint(lambda: stops_in_bounds(*_bounds_from_args()))
+
+
+@transit_bp.route('/bus/stops/<stop_id>/arrivals', methods=['GET'])
+def get_bus_arrivals(stop_id):
+    """Live arrivals at one bus stop (stop_id is the 6-digit stop code)"""
+    from app.services.bus_service import stop_arrivals
+    return _bus_endpoint(lambda: stop_arrivals(stop_id))
+
+
+@transit_bp.route('/bus/vehicles', methods=['GET'])
+def get_bus_vehicles():
+    """Every live bus in a map viewport: GET /api/bus/vehicles?bbox=..."""
+    from app.services.bus_service import vehicles_in_bounds
+    return _bus_endpoint(lambda: vehicles_in_bounds(*_bounds_from_args()))
+
+
+@transit_bp.route('/bus/vehicle', methods=['GET'])
+def get_bus_vehicle():
+    """One bus's live position: GET /api/bus/vehicle?id=MTA%20NYCT_9746"""
+    from app.services.bus_service import bus_location
+    vehicle_id = request.args.get('id')
+    if not vehicle_id:
+        return jsonify({'success': False, 'error': 'id query parameter is required'}), 400
+
+    def fetch():
+        bus = bus_location(vehicle_id)
+        if not bus:
+            raise LookupError("This bus isn't reporting its location right now")
+        return bus
+
+    return _bus_endpoint(fetch)
+
+
+@transit_bp.route('/bus/routes/shape', methods=['GET'])
+def get_bus_route_shape():
+    """A bus route's line for the map: GET /api/bus/routes/shape?id=MTA%20NYCT_M42"""
+    from app.services.bus_service import route_shape
+    route_id = request.args.get('id')
+    if not route_id:
+        return jsonify({'success': False, 'error': 'id query parameter is required'}), 400
+    return _bus_endpoint(lambda: route_shape(route_id))
+
+
+@transit_bp.route('/bus/routes/vehicles', methods=['GET'])
+def get_bus_route_vehicles():
+    """Every live bus on some routes: GET /api/bus/routes/vehicles?ids=MTA%20NYCT_M42,MTA%20NYCT_M50"""
+    from app.services.bus_service import vehicles_on_routes
+    ids = [r for r in request.args.get('ids', '').split(',') if r]
+    if not ids:
+        return jsonify({'success': False, 'error': 'ids query parameter is required'}), 400
+    return _bus_endpoint(lambda: vehicles_on_routes(ids))

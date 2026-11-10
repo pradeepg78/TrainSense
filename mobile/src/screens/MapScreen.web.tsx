@@ -1,17 +1,36 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Dimensions, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Map, { Layer, MapRef, Marker, Source } from "react-map-gl";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { BusPanel } from "../components/BusPanel";
+import { BusStopModal } from "../components/BusStopModal";
+import { BusToggle } from "../components/BusToggle";
 import { StationModal } from "../components/StationModal";
 import { TrainPanel } from "../components/TrainPanel";
+import { useBusMap, useBusToggle } from "../hooks/useBusMap";
+import { TrackedBus, useBusTracking } from "../hooks/useBusTracking";
+import { lineBounds, useLineBuses, useLineTrains } from "../hooks/useLineVehicles";
 import { TrackedTrain, useTrainTracking } from "../hooks/useTrainTracking";
-import { Arrival, Stop } from "../services/api";
+import { Arrival, Bounds, BusArrival, BusStop, Stop } from "../services/api";
+import {
+  BUS_COLOR,
+  BUS_STOP_MIN_ZOOM,
+  busBounds,
+  busPathGeoJSON,
+} from "../utils/busGeo";
+import {
+  BUS_HEADING_DATA_URI,
+  BUS_HEADING_ID,
+  BUS_ICON_DATA_URI,
+  BUS_ICON_ID,
+} from "../utils/busIcon";
 import { getMtaColor } from "../utils/mtaColors";
 import {
   lineServiceForRoute,
+  lineServicesForStationRoutes,
   stationRouteForRoute,
   trainBounds,
   trainToPathGeoJSON,
@@ -65,6 +84,19 @@ const MapScreen = () => {
   // Station the user opened before picking a train; stays marked on the map
   const [originStation, setOriginStation] = useState<Stop | null>(null);
   const { train, loading: trainLoading, error: trainError } = useTrainTracking(trackedTrain);
+
+  // Buses
+  const [viewBounds, setViewBounds] = useState<Bounds | null>(null);
+  const [zoom, setZoom] = useState(12);
+  const { showBuses, toggleBuses } = useBusToggle();
+  const [selectedBusStop, setSelectedBusStop] = useState<BusStop | null>(null);
+  const [trackedBus, setTrackedBus] = useState<TrackedBus | null>(null);
+  // Stop the user opened before picking a bus; stays marked on the map
+  const [originBusStop, setOriginBusStop] = useState<BusStop | null>(null);
+  const { bus, loading: busLoading, error: busError } = useBusTracking(trackedBus);
+  const isTracking = !!trackedTrain || !!trackedBus;
+  const busMap = useBusMap(showBuses && !isTracking, viewBounds, zoom);
+  const [hoveringFeature, setHoveringFeature] = useState(false);
 
   // User location stays at Manhattan center (mirrors native behavior)
   const userLocation = MANHATTAN_CENTER;
@@ -182,24 +214,96 @@ const MapScreen = () => {
 
   const handleTrainPress = (arrival: Arrival) => {
     if (!arrival.trip_id) return;
+    handleStopTracking();
     setOriginStation(selectedStation);
     setShowStationModal(false);
     setSelectedStation(null);
     setTrackedTrain({ tripId: arrival.trip_id, routeId: arrival.route });
   };
 
+  const handleBusPress = (arrival: BusArrival) => {
+    handleStopTracking();
+    setOriginBusStop(selectedBusStop);
+    setSelectedBusStop(null);
+    setTrackedBus({ vehicleId: arrival.vehicle_id, route: arrival.route });
+  };
+
+  // Only one train or bus is followed at a time
   const handleStopTracking = () => {
     setTrackedTrain(null);
     setOriginStation(null);
+    setTrackedBus(null);
+    setOriginBusStop(null);
   };
 
+  const updateView = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const b = map.getBounds();
+    if (!b) return;
+    setViewBounds([b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]);
+    setZoom(map.getZoom());
+  };
+
+  const handleMapLoad = () => {
+    const map = mapRef.current?.getMap();
+    const addIcon = (id: string, uri: string) => {
+      if (!map || map.hasImage(id)) return;
+      const img = new window.Image();
+      img.onload = () => {
+        if (!map.hasImage(id)) map.addImage(id, img, { pixelRatio: 3 });
+      };
+      img.src = uri;
+    };
+    addIcon(BUS_ICON_ID, BUS_ICON_DATA_URI);
+    addIcon(BUS_HEADING_ID, BUS_HEADING_DATA_URI);
+    updateView();
+  };
+
+  const handleZoomToStops = () =>
+    mapRef.current?.easeTo({ zoom: BUS_STOP_MIN_ZOOM + 0.5, duration: 500 });
+
   const trainPathGeoJSON = useMemo(() => trainToPathGeoJSON(train), [train]);
+  const busRouteGeoJSON = useMemo(() => busPathGeoJSON(bus), [bus]);
+
+  // Every train / bus on the lines of the station or stop the user opened
+  const openStation = showStationModal ? selectedStation : null;
+  const stationRouteIds = openStation?.routes?.map((r) => r.id) ?? [];
+  const busStopRouteIds = selectedBusStop ? selectedBusStop.routes.map((r) => r.id) : [];
+  const lineTrains = useLineTrains(stationRouteIds);
+  const lineBuses = useLineBuses(busStopRouteIds);
+
+  // Frame the stop and every vehicle on its lines above the sheet, once per stop
+  const framedStop = useRef<string | null>(null);
+  useEffect(() => {
+    const stop = openStation || selectedBusStop;
+    if (!stop) {
+      framedStop.current = null;
+      return;
+    }
+    const loaded = openStation ? lineTrains.loaded : lineBuses.loaded;
+    const key = `${openStation ? "station" : "bus"}:${stop.id}`;
+    if (!loaded || framedStop.current === key) return;
+    framedStop.current = key;
+    const vehicles = openStation ? lineTrains.trains : lineBuses.buses;
+    const [sw, ne] = lineBounds(stop, vehicles);
+    mapRef.current?.fitBounds([sw, ne], {
+      padding: { top: 70, bottom: Dimensions.get("window").height * 0.52 + 30, left: 50, right: 90 },
+      maxZoom: 15,
+      duration: 600,
+    });
+  }, [openStation?.id, selectedBusStop?.id, lineTrains.loaded, lineBuses.loaded]);
 
   // While tracking, fade every line and station not served by the tracked train
   const trackedService = trackedTrain ? lineServiceForRoute(trackedTrain.routeId) : null;
   const trackedStationRoute = trackedTrain ? stationRouteForRoute(trackedTrain.routeId) : null;
+  const openStationServices = openStation ? lineServicesForStationRoutes(stationRouteIds) : null;
   const lineOpacity: any = trackedService
     ? ["case", ["==", ["get", "service"], trackedService], 1, 0.12]
+    : openStationServices
+    ? ["case", ["in", ["get", "service"], ["literal", openStationServices]], 1, 0.15]
+    : trackedBus || selectedBusStop
+    ? 0.25
     : 1;
   const stationOpacity: any = trackedStationRoute
     ? ["case", ["in", trackedStationRoute, ["coalesce", ["get", "daytime_routes"], ""]], 1, 0.15]
@@ -216,10 +320,46 @@ const MapScreen = () => {
     });
   }, [train?.trip_id]);
 
+  // Frame the bus and its next few stops when following starts
+  useEffect(() => {
+    if (!bus) return;
+    const [sw, ne] = busBounds(bus, originBusStop ? [originBusStop] : []);
+    mapRef.current?.fitBounds([sw, ne], {
+      padding: { top: 80, bottom: 420, left: 40, right: 90 },
+      maxZoom: 16,
+      duration: 600,
+    });
+  }, [bus?.vehicle_id]);
+
   const handleMapClick = (e: any) => {
     const feature = e.features?.[0];
     if (!feature || feature.geometry?.type !== "Point") return;
     const props = feature.properties || {};
+
+    const layer = feature.layer?.id;
+    if (layer === "line-buses-dot" || layer === "line-buses-label") {
+      handleStopTracking();
+      setOriginBusStop(selectedBusStop);
+      setSelectedBusStop(null);
+      setTrackedBus({ vehicleId: props.id, route: props.route });
+      return;
+    }
+    if (layer === "line-trains-dot" || layer === "line-trains-label") {
+      handleStopTracking();
+      setOriginStation(openStation);
+      handleCloseModal();
+      setTrackedTrain({ tripId: props.trip_id, routeId: props.route });
+      return;
+    }
+    if (layer === "bus-stops-layer") {
+      const stop = busMap.getStop(props.id);
+      if (stop) {
+        handleCloseModal();
+        setSelectedBusStop(stop);
+      }
+      return;
+    }
+
     const coords = feature.geometry.coordinates as [number, number];
     const routes = (props.daytime_routes || "").split(" ").filter((r: string) => r && r.trim());
     const stopId = props.gtfs_stop_id || props.id || props.complex_id || props.station_id || "";
@@ -237,6 +377,7 @@ const MapScreen = () => {
         text_color: "#FFFFFF",
       })),
     });
+    setSelectedBusStop(null);
     setShowStationModal(true);
   };
 
@@ -261,9 +402,18 @@ const MapScreen = () => {
         }}
         mapStyle="mapbox://styles/mapbox/light-v11"
         style={{ width: "100%", height: "100%" }}
-        interactiveLayerIds={["stations-all"]}
+        interactiveLayerIds={[
+          "stations-all",
+          "bus-stops-layer",
+          ...(openStation ? ["line-trains-dot", "line-trains-label"] : []),
+          ...(selectedBusStop ? ["line-buses-dot", "line-buses-label"] : []),
+        ]}
         onClick={handleMapClick}
-        cursor="auto"
+        onLoad={handleMapLoad}
+        onMoveEnd={updateView}
+        onMouseEnter={() => setHoveringFeature(true)}
+        onMouseLeave={() => setHoveringFeature(false)}
+        cursor={hoveringFeature ? "pointer" : "auto"}
         attributionControl={false}
       >
         {/* Subway Lines */}
@@ -315,6 +465,187 @@ const MapScreen = () => {
               }}
             />
           </Source>
+        )}
+
+        {/* Bus route lines, under the subway so it stays readable */}
+        {showBuses && !isTracking && (
+          <Source id="bus-routes" type="geojson" data={busMap.routesGeoJSON}>
+            <Layer
+              id="bus-routes-layer"
+              type="line"
+              minzoom={BUS_STOP_MIN_ZOOM}
+              beforeId={subwayLinesGeoJSON ? "subway-lines-layer" : undefined}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": BUS_COLOR,
+                "line-width": ["interpolate", ["linear"], ["zoom"], 15, 1.5, 18, 3],
+                "line-opacity": 0.35,
+              }}
+            />
+            <Layer
+              id="bus-routes-label"
+              type="symbol"
+              minzoom={BUS_STOP_MIN_ZOOM + 0.5}
+              layout={{
+                "symbol-placement": "line",
+                "symbol-spacing": 280,
+                "text-field": ["get", "route"],
+                "text-size": 10,
+                "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+              }}
+              paint={{
+                "text-color": BUS_COLOR,
+                "text-halo-color": "#FFFFFF",
+                "text-halo-width": 1.5,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Bus stops (street level only) */}
+        {showBuses && !isTracking && (
+          <Source id="bus-stops" type="geojson" data={busMap.stopsGeoJSON}>
+            <Layer
+              id="bus-stops-layer"
+              type="circle"
+              minzoom={BUS_STOP_MIN_ZOOM}
+              paint={{
+                "circle-radius": ["interpolate", ["linear"], ["zoom"], 15, 4, 18, 7],
+                "circle-color": "#FFFFFF",
+                "circle-stroke-color": BUS_COLOR,
+                "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 15, 2, 18, 3],
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Opened bus stop: its routes, and every bus on them */}
+        {selectedBusStop && (
+          <Source id="line-bus-routes" type="geojson" data={lineBuses.routesGeoJSON}>
+            <Layer
+              id="line-bus-routes-layer"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{ "line-color": BUS_COLOR, "line-width": 4, "line-opacity": 0.7 }}
+            />
+          </Source>
+        )}
+        {selectedBusStop && (
+          <Source id="line-buses" type="geojson" data={lineBuses.geoJSON}>
+            <Layer
+              id="line-buses-dot"
+              type="circle"
+              paint={{
+                "circle-radius": 7,
+                "circle-color": BUS_COLOR,
+                "circle-stroke-color": "#FFFFFF",
+                "circle-stroke-width": 2,
+              }}
+            />
+            <Layer
+              id="line-buses-label"
+              type="symbol"
+              layout={{
+                "text-field": ["get", "route"],
+                "text-size": 11,
+                "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+                "text-offset": [0, -1.1],
+                "text-anchor": "bottom",
+              }}
+              paint={{
+                "text-color": BUS_COLOR,
+                "text-halo-color": "#FFFFFF",
+                "text-halo-width": 1.5,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Opened station: every train on its lines */}
+        {openStation && (
+          <Source id="line-trains" type="geojson" data={lineTrains.geoJSON}>
+            <Layer
+              id="line-trains-dot"
+              type="circle"
+              paint={{
+                "circle-radius": 9,
+                "circle-color": ["get", "color"],
+                "circle-stroke-color": "#FFFFFF",
+                "circle-stroke-width": 2,
+              }}
+            />
+            <Layer
+              id="line-trains-label"
+              type="symbol"
+              layout={{
+                "text-field": ["get", "label"],
+                "text-size": 10,
+                "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+                "text-allow-overlap": true,
+                "text-ignore-placement": true,
+              }}
+              paint={{ "text-color": ["get", "textColor"] }}
+            />
+          </Source>
+        )}
+
+        {/* Station or bus stop the user opened */}
+        {(openStation || selectedBusStop) && (
+          <Marker
+            longitude={(openStation || selectedBusStop)!.longitude}
+            latitude={(openStation || selectedBusStop)!.latitude}
+            anchor="bottom"
+          >
+            <View style={{ alignItems: "center" }}>
+              <View style={styles.originMarker}>
+                <Text style={styles.originMarkerText} numberOfLines={1}>
+                  {(openStation || selectedBusStop)!.name}
+                </Text>
+              </View>
+              <View style={styles.originMarkerPin} />
+            </View>
+          </Marker>
+        )}
+
+        {/* Followed bus: its route in this direction */}
+        {trackedBus && busRouteGeoJSON && (
+          <Source id="bus-route" type="geojson" data={busRouteGeoJSON}>
+            <Layer
+              id="bus-route-layer"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{ "line-color": BUS_COLOR, "line-width": 5, "line-opacity": 0.8 }}
+            />
+          </Source>
+        )}
+
+        {/* Bus stop the user started from */}
+        {trackedBus && originBusStop && (
+          <Marker longitude={originBusStop.longitude} latitude={originBusStop.latitude} anchor="bottom">
+            <View style={{ alignItems: "center" }}>
+              <View style={styles.originMarker}>
+                <Text style={styles.originMarkerText} numberOfLines={1}>
+                  {originBusStop.name}
+                </Text>
+              </View>
+              <View style={styles.originMarkerPin} />
+            </View>
+          </Marker>
+        )}
+
+        {/* Followed bus's live position */}
+        {trackedBus && bus && (
+          <Marker longitude={bus.position.longitude} latitude={bus.position.latitude} anchor="center">
+            <View style={styles.busMarkerWrap}>
+              {bus.bearing != null && (
+                <Image
+                  source={{ uri: BUS_HEADING_DATA_URI }}
+                  style={[styles.busHeading, { transform: [{ rotate: `${bus.bearing}deg` }] }]}
+                />
+              )}
+              <Image source={{ uri: BUS_ICON_DATA_URI }} style={styles.busMarker} />
+            </View>
+          </Marker>
         )}
 
         {/* Station the user started from */}
@@ -412,6 +743,26 @@ const MapScreen = () => {
         </View>
       )}
 
+      {!isTracking && !openStation && !selectedBusStop && (
+        <BusToggle
+          on={showBuses}
+          onToggle={toggleBuses}
+          needsZoom={busMap.needsZoom}
+          onZoomToStops={handleZoomToStops}
+        />
+      )}
+
+      {trackedBus && (
+        <BusPanel
+          route={trackedBus.route}
+          bus={bus}
+          loading={busLoading}
+          error={busError}
+          originStop={originBusStop}
+          onClose={handleStopTracking}
+        />
+      )}
+
       {trackedTrain && (
         <TrainPanel
           routeId={trackedTrain.routeId}
@@ -428,6 +779,13 @@ const MapScreen = () => {
         onClose={handleCloseModal}
         station={selectedStation}
         onTrainPress={handleTrainPress}
+      />
+
+      <BusStopModal
+        visible={!!selectedBusStop}
+        stop={selectedBusStop}
+        onClose={() => setSelectedBusStop(null)}
+        onBusPress={handleBusPress}
       />
     </View>
   );
@@ -495,6 +853,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   trainMarkerEmoji: { fontSize: 20 },
+  // heading image is 96/72 the size of the icon, centered on it
+  busMarkerWrap: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
+  busHeading: { position: "absolute", width: 48, height: 48 },
+  busMarker: { width: 36, height: 36 },
   originMarker: {
     backgroundColor: "#1a1a1a",
     paddingHorizontal: 10,

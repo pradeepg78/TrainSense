@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { TrainCrowd } from "../services/api";
 
 interface CrowdBarsProps {
-  crowd: TrainCrowd | null | undefined;
+  // Anything with a level + label: a train estimate or a bus's live count
+  crowd: Pick<TrainCrowd, "level" | "label"> | null | undefined;
   size?: "small" | "large";
   showLabel?: boolean;
 }
@@ -15,7 +16,7 @@ const LEVELS: Record<TrainCrowd["level"], { bars: number; color: string; short: 
   very_high: { bars: 4, color: "#EF4444", short: "Packed" },
 };
 
-// Four-bar crowding indicator for a single train
+// Four-bar crowding indicator for a single train or bus
 export const CrowdBars: React.FC<CrowdBarsProps> = ({ crowd, size = "small", showLabel = true }) => {
   if (!crowd) return null;
   const { bars, color, short } = LEVELS[crowd.level];

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -205,15 +204,11 @@ export const StationModal: React.FC<StationModalProps> = ({
 
   const arrivalGroups = groupArrivalsByRoute(arrivals);
 
-  if (!station) return null;
+  if (!visible || !station) return null;
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
+    <View style={styles.sheet}>
+      <View style={styles.grabber} />
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -324,11 +319,38 @@ export const StationModal: React.FC<StationModalProps> = ({
           </View>
         </ScrollView>
       </View>
-    </Modal>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // Bottom sheet over the lower half of the map, so the vehicles on this
+  // stop's lines stay visible above it
+  sheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "52%",
+    backgroundColor: "#f5f5f5",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  grabber: {
+    alignSelf: "center",
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#D1D5DB",
+    marginTop: 8,
+    marginBottom: 4,
+  },
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",

@@ -19,7 +19,10 @@ class Config:
     
     # MTA API Configuration
     MTA_API_KEY = os.environ.get('MTA_API_KEY')
-    
+    # MTA Bus Time key (free: register.developer.obanyc.com). Bus features are
+    # disabled without it; set it in backend/.env or the deploy environment.
+    MTA_BUS_API_KEY = os.environ.get('MTA_BUS_API_KEY')
+
     # MTA Data URLs
     MTA_GTFS_STATIC_URL = 'http://web.mta.info/developers/data/nyct/subway/google_transit.zip'
     

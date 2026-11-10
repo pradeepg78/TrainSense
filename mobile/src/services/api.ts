@@ -130,6 +130,96 @@ export interface TrainLocation {
   updated_at: number;
 }
 
+// One train on a line, for showing every train on the lines at a station
+export interface LineTrain {
+  trip_id: string;
+  route_id: string;
+  direction: string;
+  destination: string;
+  status: "stopped_at" | "in_transit";
+  next_stop: string;
+  latitude: number;
+  longitude: number;
+}
+
+// ---------- Buses (see backend/app/services/bus_service.py) ----------
+
+export interface BusRoute {
+  id: string; // e.g. "MTA NYCT_M42"
+  short_name: string; // e.g. "M42"
+  long_name: string;
+  description: string;
+}
+
+export interface BusStop {
+  id: string; // 6-digit stop code
+  name: string;
+  direction: string; // e.g. "Southbound"
+  latitude: number;
+  longitude: number;
+  routes: BusRoute[];
+}
+
+// Live load reported by the bus's passenger counter (not every bus has one)
+export interface BusCrowd {
+  level: TrainCrowd["level"];
+  label: string;
+  passengers?: number;
+  capacity?: number;
+}
+
+export interface BusArrival {
+  route: string;
+  route_id: string;
+  destination: string;
+  minutes: number | null;
+  distance_text: string; // e.g. "2 stops away"
+  stops_away: number | null;
+  vehicle_id: string;
+  crowd: BusCrowd | null;
+}
+
+export interface BusVehicle {
+  id: string;
+  route: string;
+  latitude: number;
+  longitude: number;
+  bearing: number | null;
+  crowd_level: TrainCrowd["level"] | null;
+}
+
+export interface BusUpcomingStop {
+  id: string;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  minutes: number | null;
+  distance_text: string;
+  stops_away: number | null;
+}
+
+export interface BusLocation {
+  vehicle_id: string;
+  route: string;
+  route_id: string;
+  destination: string;
+  position: { latitude: number; longitude: number };
+  bearing: number | null;
+  crowd: BusCrowd | null;
+  upcoming_stops: BusUpcomingStop[];
+  path: [number, number][][]; // [lon, lat] lines of this direction's route
+  updated_at: number;
+}
+
+export interface BusRouteShape {
+  id: string;
+  short_name: string;
+  lines: [number, number][][]; // [lon, lat] lines, both directions
+}
+
+// south, west, north, east
+export type Bounds = [number, number, number, number];
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -269,6 +359,36 @@ export const apiService = {
     return apiRequest<TrainLocation>(
       `/trains/${encodeURIComponent(tripId)}?route=${encodeURIComponent(routeId)}`
     );
+  },
+
+  // Every train running on these lines
+  async getLineTrains(routeIds: string[]): Promise<ApiResponse<LineTrain[]>> {
+    return apiRequest<LineTrain[]>(`/trains?routes=${routeIds.map(encodeURIComponent).join(",")}`);
+  },
+
+  // Buses
+  async getBusStops(bounds: Bounds): Promise<ApiResponse<BusStop[]>> {
+    return apiRequest<BusStop[]>(`/bus/stops?bbox=${bounds.map((n) => n.toFixed(5)).join(",")}`);
+  },
+
+  async getBusArrivals(stopId: string): Promise<ApiResponse<BusArrival[]>> {
+    return apiRequest<BusArrival[]>(`/bus/stops/${encodeURIComponent(stopId)}/arrivals`);
+  },
+
+  async getBusVehicles(bounds: Bounds): Promise<ApiResponse<BusVehicle[]>> {
+    return apiRequest<BusVehicle[]>(`/bus/vehicles?bbox=${bounds.map((n) => n.toFixed(5)).join(",")}`);
+  },
+
+  async getBusRouteVehicles(routeIds: string[]): Promise<ApiResponse<BusVehicle[]>> {
+    return apiRequest<BusVehicle[]>(`/bus/routes/vehicles?ids=${routeIds.map(encodeURIComponent).join(",")}`);
+  },
+
+  async getBusRouteShape(routeId: string): Promise<ApiResponse<BusRouteShape>> {
+    return apiRequest<BusRouteShape>(`/bus/routes/shape?id=${encodeURIComponent(routeId)}`);
+  },
+
+  async getBusLocation(vehicleId: string): Promise<ApiResponse<BusLocation>> {
+    return apiRequest<BusLocation>(`/bus/vehicle?id=${encodeURIComponent(vehicleId)}`);
   },
 
 };

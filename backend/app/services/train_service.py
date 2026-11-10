@@ -245,29 +245,18 @@ def _stop_summary(stop_id, arrival_time=None, now=None):
     return out
 
 
-def get_train(trip_id, route_id):
-    """
-    Locate one train. Returns None if the trip isn't in the live feed
-    (e.g. it already finished its run).
-    """
-    service = RealtimeDataService()
+def _feed_for_route(service, route_id):
     feed_id = next((fid for fid, routes in service.FEED_MAPPINGS.items() if route_id in routes), None)
-    if not feed_id:
-        return None
-    feed = service._get_feed_data(feed_id)
-    if not feed:
-        return None
+    return service._get_feed_data(feed_id) if feed_id else None
 
-    trip_update, vehicle = None, None
-    for entity in feed.entity:
-        if entity.HasField('trip_update') and entity.trip_update.trip.trip_id == trip_id:
-            trip_update = entity.trip_update
-        elif entity.HasField('vehicle') and entity.vehicle.trip.trip_id == trip_id:
-            vehicle = entity.vehicle
+
+def _locate(feed, route_id, trip_id, trip_update, vehicle, now, with_path=True):
+    """
+    Where one trip's train is right now. Returns None for stale or empty
+    trips. `with_path` also computes the remaining track (slower).
+    """
     if not trip_update or not trip_update.stop_time_update:
         return None
-
-    now = int(time.time())
     updates = [(stu.stop_id, _stop_time(stu)) for stu in trip_update.stop_time_update]
     # Stale feed entry: no vehicle reporting and every prediction long past
     if not vehicle and all(t and t < now - 120 for _, t in updates):
@@ -321,14 +310,53 @@ def get_train(trip_id, route_id):
     else:
         lat, lon = next_stop['latitude'], next_stop['longitude']
 
-    # Path the train still has to travel, for highlighting on the map
-    if shape:
-        here = _project_onto_shape(shape, lat, lon)
-        last = upcoming[-1]
-        terminus = _project_onto_shape(shape, last['latitude'], last['longitude'])
-        path = _shape_slice(shape, here, terminus) if terminus > here else [(lat, lon)]
-    else:
-        path = [(lat, lon)] + [(s['latitude'], s['longitude']) for s in upcoming]
+    path = None
+    if with_path:
+        # Path the train still has to travel, for highlighting on the map
+        if shape:
+            here = _project_onto_shape(shape, lat, lon)
+            last = upcoming[-1]
+            terminus = _project_onto_shape(shape, last['latitude'], last['longitude'])
+            path = _shape_slice(shape, here, terminus) if terminus > here else [(lat, lon)]
+        else:
+            path = [(lat, lon)] + [(s['latitude'], s['longitude']) for s in upcoming]
+
+    return {
+        'updates': updates,
+        'upcoming': upcoming,
+        'next_stop': next_stop,
+        'prev_stop': prev_stop,
+        'status': status,
+        'lat': lat,
+        'lon': lon,
+        'path': path,
+    }
+
+
+def get_train(trip_id, route_id):
+    """
+    Locate one train. Returns None if the trip isn't in the live feed
+    (e.g. it already finished its run).
+    """
+    service = RealtimeDataService()
+    feed = _feed_for_route(service, route_id)
+    if not feed:
+        return None
+
+    trip_update, vehicle = None, None
+    for entity in feed.entity:
+        if entity.HasField('trip_update') and entity.trip_update.trip.trip_id == trip_id:
+            trip_update = entity.trip_update
+        elif entity.HasField('vehicle') and entity.vehicle.trip.trip_id == trip_id:
+            vehicle = entity.vehicle
+
+    now = int(time.time())
+    loc = _locate(feed, route_id, trip_id, trip_update, vehicle, now)
+    if not loc:
+        return None
+    updates, upcoming = loc['updates'], loc['upcoming']
+    next_stop, prev_stop, status = loc['next_stop'], loc['prev_stop'], loc['status']
+    lat, lon, path = loc['lat'], loc['lon'], loc['path']
 
     # Crowding: right now (leaving the stop it's at, or the one it last left),
     # and as it leaves each remaining stop
@@ -355,6 +383,61 @@ def get_train(trip_id, route_id):
         'path': [{'latitude': p[0], 'longitude': p[1]} for p in path],
         'updated_at': vehicle.timestamp if vehicle and vehicle.timestamp else now,
     }
+
+
+# Station maps list base services; the feeds also carry these variants
+_ROUTE_VARIANTS = {'6': ['6', '6X'], '7': ['7', '7X'], 'F': ['F', 'FX'], 'SIR': ['SI']}
+
+_line_cache = {}  # route_id -> (expires_at, trains)
+LINE_CACHE_SECONDS = 20
+
+
+def _trains_on_route(service, route_id, now):
+    hit = _line_cache.get(route_id)
+    if hit and hit[0] > now:
+        return hit[1]
+    feed = _feed_for_route(service, route_id)
+    trains = []
+    if feed:
+        trips, vehicles = {}, {}
+        for entity in feed.entity:
+            if entity.HasField('trip_update') and entity.trip_update.trip.route_id == route_id:
+                trips[entity.trip_update.trip.trip_id] = entity.trip_update
+            elif entity.HasField('vehicle') and entity.vehicle.trip.route_id == route_id:
+                vehicles[entity.vehicle.trip.trip_id] = entity.vehicle
+        for trip_id, trip_update in trips.items():
+            vehicle = vehicles.get(trip_id)
+            # Trips that haven't left their terminal yet aren't on the line
+            if not vehicle:
+                continue
+            try:
+                loc = _locate(feed, route_id, trip_id, trip_update, vehicle, now, with_path=False)
+            except Exception:
+                loc = None
+            if not loc:
+                continue
+            trains.append({
+                'trip_id': trip_id,
+                'route_id': route_id,
+                'direction': service._get_direction_from_stop_id(loc['next_stop']['id'], trip_update.trip),
+                'destination': loc['upcoming'][-1]['name'],
+                'status': 'stopped_at' if loc['status'] == STOPPED_AT else 'in_transit',
+                'next_stop': loc['next_stop']['name'],
+                'latitude': loc['lat'],
+                'longitude': loc['lon'],
+            })
+    _line_cache[route_id] = (now + LINE_CACHE_SECONDS, trains)
+    return trains
+
+
+def trains_on_routes(route_ids):
+    """Every train currently running on the given lines, with its position"""
+    service = RealtimeDataService()
+    now = int(time.time())
+    trains = []
+    for rid in dict.fromkeys(v for r in route_ids for v in _ROUTE_VARIANTS.get(r, [r])):
+        trains.extend(_trains_on_route(service, rid, now))
+    return trains
 
 
 def add_crowding_to_arrivals(arrivals):
